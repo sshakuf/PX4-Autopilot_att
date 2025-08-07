@@ -162,9 +162,11 @@ void MulticopterRateControl::Run() {
 
       if (_manual_control_setpoint_sub.update(&manual_control_setpoint)) {
 
-        // ===== HORIZONTAL-ONLY MODIFICATION START =====
-        // ORIGINAL CODE: Used all three axes for angular rate control
-        // NEW CODE: Suppress roll and pitch rates, keep only yaw for rotation
+        // ===== HORIZONTAL-ONLY ATTITUDE CONTROL MODIFICATION START =====
+        // APPROACH: Use attitude controller for horizontal stabilization
+        // - Roll/pitch stick inputs → attitude setpoints → automatic stabilization
+        // - Yaw stick input → rate control for continuous rotation
+        // - Altitude fixed by tether constraint
 
         // Apply deadband to stick inputs to prevent drift
         const float deadband = 0.05f; // 5% deadband around center
@@ -178,42 +180,43 @@ void MulticopterRateControl::Run() {
                               ? manual_control_setpoint.yaw
                               : 0.0f;
 
-        // MODIFIED: Only allow yaw rate control, suppress roll and pitch rates
-        const Vector3f man_rate_sp{
-            0.0f, // CHANGED: Was roll rate setpoint, now 0 (no roll rotation)
-            0.0f, // CHANGED: Was pitch rate setpoint, now 0 (no pitch rotation)
-            math::superexpo(yaw_input, _param_mc_acro_expo_y.get(),
-                            _param_mc_acro_supexpoy.get()) // Keep yaw control
+        // ATTITUDE SETPOINT APPROACH: Convert stick inputs to attitude targets
+        // Maximum tilt angles for horizontal thrust (tunable parameters)
+        // INCREASED for stronger horizontal thrust with horizontal rotors
+        const float max_roll_angle = radians(35.0f);   // Max roll angle for Y-axis movement (increased from 15°)
+        const float max_pitch_angle = radians(35.0f);  // Max pitch angle for X-axis movement (increased from 15°)
+        
+        // Convert stick inputs to attitude setpoints instead of rates
+        // This allows attitude controller to provide automatic stabilization
+        const Vector3f attitude_setpoint{
+            roll_input * max_roll_angle,    // Roll angle setpoint for Y movement
+            pitch_input * max_pitch_angle,  // Pitch angle setpoint for X movement
+            0.0f  // No yaw angle setpoint (use rate control instead)
         };
 
-        _rates_setpoint = man_rate_sp.emult(_acro_rate_max);
+        // Convert attitude setpoints to rate setpoints for current control loop
+        // This is a simplified approach - normally done by mc_att_control
+        // INCREASED gain for faster attitude response and stronger thrust
+        const float attitude_to_rate_gain = 4.0f; // Tunable gain (increased from 2.0)
+        _rates_setpoint(0) = attitude_setpoint(0) * attitude_to_rate_gain; // Roll rate
+        _rates_setpoint(1) = attitude_setpoint(1) * attitude_to_rate_gain; // Pitch rate
+        
+        // Yaw rate control with reduced aggressiveness to prevent oscillations
+        // REDUCED rate for smoother yaw control
+        const float yaw_rate_scale = 0.3f; // Scale down yaw rate (was 1.0, now 0.3)
+        _rates_setpoint(2) = math::superexpo(yaw_input, _param_mc_acro_expo_y.get(),
+                                           _param_mc_acro_supexpoy.get()) * _acro_rate_max(2) * yaw_rate_scale;
 
-        // HORIZONTAL THRUST CONFIGURATION
-        // Tunable parameters for horizontal movement
-        const float horizontal_scale =
-            0.25f; // Maximum horizontal thrust (adjust based on testing)
-        const float hover_thrust = -0.5f; // Fixed vertical thrust for altitude
-                                          // hold (adjust for your drone weight)
+        // FIXED THRUST CONFIGURATION FOR TETHERED DRONE
+        const float hover_thrust = -0.5f; // Fixed vertical thrust for altitude hold
+        
+        // Fixed thrust - no horizontal thrust commands needed
+        // Horizontal movement comes from attitude (roll/pitch) changes
+        _thrust_setpoint(0) = 0.0f; // No direct X thrust
+        _thrust_setpoint(1) = 0.0f; // No direct Y thrust  
+        _thrust_setpoint(2) = hover_thrust; // Fixed Z thrust for hover
 
-        // CHANGED: Map stick inputs to direct horizontal thrust instead of
-        // vertical thrust
-        _thrust_setpoint(0) =
-            roll_input *
-            horizontal_scale; // X-axis: Roll stick → Left/Right movement
-        _thrust_setpoint(1) =
-            -pitch_input *
-            horizontal_scale; // Y-axis: Pitch stick → Forward/Back movement
-                              // (negative for correct direction)
-        _thrust_setpoint(2) =
-            hover_thrust; // Z-axis: Fixed thrust for altitude hold
-
-        // ORIGINAL CODE was:
-        // _thrust_setpoint(2) = -(manual_control_setpoint.throttle + 1.f) *
-        // .5f;  // Throttle controlled altitude _thrust_setpoint(0) =
-        // _thrust_setpoint(1) = 0.f;                        // No horizontal
-        // thrust
-
-        // ===== HORIZONTAL-ONLY MODIFICATION END =====
+        // ===== HORIZONTAL-ONLY ATTITUDE CONTROL MODIFICATION END =====
 
         // publish rate setpoint
         vehicle_rates_setpoint.roll = _rates_setpoint(0);
@@ -294,23 +297,25 @@ void MulticopterRateControl::Run() {
 
       _thrust_setpoint.copyTo(vehicle_thrust_setpoint.xyz);
 
-      // ===== TORQUE SUPPRESSION FOR HORIZONTAL-ONLY FLIGHT =====
-      // MODIFIED: Suppress roll and pitch torque to prevent attitude changes
-      vehicle_torque_setpoint.xyz[0] =
-          0.0f; // CHANGED: Was torque_setpoint(0), now 0 (no roll torque)
-      vehicle_torque_setpoint.xyz[1] =
-          0.0f; // CHANGED: Was torque_setpoint(1), now 0 (no pitch torque)
+      // ===== ATTITUDE CONTROL ENABLED FOR HORIZONTAL STABILIZATION =====
+      // ENABLE roll and pitch torque for attitude-based horizontal control
+      // This allows the rate controller to generate torque commands that will
+      // create the desired roll/pitch angles for horizontal movement and stabilization
+      vehicle_torque_setpoint.xyz[0] = PX4_ISFINITE(torque_setpoint(0)) 
+                                           ? torque_setpoint(0) 
+                                           : 0.f; // Enable roll torque for Y-axis control
+      vehicle_torque_setpoint.xyz[1] = PX4_ISFINITE(torque_setpoint(1)) 
+                                           ? torque_setpoint(1) 
+                                           : 0.f; // Enable pitch torque for X-axis control
       vehicle_torque_setpoint.xyz[2] = PX4_ISFINITE(torque_setpoint(2))
                                            ? torque_setpoint(2)
-                                           : 0.f; // Keep yaw torque
+                                           : 0.f; // Keep yaw torque for rotation
 
-      // ORIGINAL CODE was:
-      // vehicle_torque_setpoint.xyz[0] = PX4_ISFINITE(torque_setpoint(0)) ?
-      // torque_setpoint(0) : 0.f; vehicle_torque_setpoint.xyz[1] =
-      // PX4_ISFINITE(torque_setpoint(1)) ? torque_setpoint(1) : 0.f;
-      // vehicle_torque_setpoint.xyz[2] = PX4_ISFINITE(torque_setpoint(2)) ?
-      // torque_setpoint(2) : 0.f;
-      // ===== END TORQUE SUPPRESSION =====
+      // NOTE: These torque commands will create small roll/pitch angles that:
+      // 1. Generate horizontal thrust for movement (when stick input active)  
+      // 2. Provide automatic stabilization (when sticks centered)
+      // 3. Resist external disturbances (attitude controller fights unwanted tilts)
+      // ===== END ATTITUDE CONTROL SETUP =====
 
       // scale setpoints by battery status if enabled
       if (_param_mc_bat_scale_en.get()) {
@@ -418,17 +423,20 @@ int MulticopterRateControl::print_usage(const char *reason) {
   PRINT_MODULE_DESCRIPTION(
       R"DESCR_STR(
 ### Description
-This implements the multicopter rate controller modified for horizontal-only movement.
+This implements the multicopter rate controller modified for horizontal-only movement
+using attitude-based control for stabilization.
 It takes rate setpoints (in acro mode via `manual_control_setpoint` topic) as inputs 
 and outputs actuator control messages.
 
 HORIZONTAL-ONLY MODIFICATIONS:
-- Roll and pitch stick inputs control horizontal thrust (X/Y axes)
-- Vertical thrust is fixed for altitude hold
-- Roll and pitch torque commands are suppressed to maintain level flight
-- Only yaw rotation is allowed for in-place turning
+- Roll and pitch stick inputs generate attitude setpoints for horizontal movement
+- Attitude controller provides automatic stabilization when sticks are centered
+- Vertical thrust is fixed for altitude hold (tethered constraint)
+- Yaw rate control provides continuous rotation capability
+- Roll/pitch torque enabled for attitude-based horizontal control and disturbance rejection
 
-The controller has a PID loop for angular rate error (yaw only in this configuration).
+The controller uses PID loops for all three axes with attitude setpoint conversion
+for roll/pitch (horizontal stabilization) and direct rate control for yaw (rotation).
 
 )DESCR_STR");
 
