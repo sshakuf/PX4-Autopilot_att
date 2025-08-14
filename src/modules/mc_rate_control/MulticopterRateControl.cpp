@@ -25,8 +25,8 @@
  * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
  * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
  * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
  ****************************************************************************/
@@ -43,6 +43,33 @@ using namespace matrix;
 using namespace time_literals;
 using math::radians;
 
+// ---------- helpers ----------
+static inline float wrap_pi(float a) {
+  while (a > M_PI)
+    a -= 2.f * M_PI;
+  while (a < -M_PI)
+    a += 2.f * M_PI;
+  return a;
+}
+
+static inline float wrap_deg_pm180(float d) {
+  while (d > 180.f)
+    d -= 360.f;
+  while (d < -180.f)
+    d += 360.f;
+  return d;
+}
+
+static inline float quat_to_yaw(const matrix::Quatf &q) {
+  return Eulerf(q).psi();
+}
+
+// Per-module (singleton) state for SL heading without touching the header.
+// If you prefer per-instance, move these into the class in the header.
+static float g_sl_heading_rad = NAN; // target heading (rad)
+static hrt_abstime g_sl_param_sync_last =
+    0; // last time we pushed back to SL_HEAD_DEG
+
 MulticopterRateControl::MulticopterRateControl(bool vtol)
     : ModuleParams(nullptr),
       WorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl),
@@ -52,7 +79,9 @@ MulticopterRateControl::MulticopterRateControl(bool vtol)
       _vehicle_torque_setpoint_pub(
           vtol ? ORB_ID(vehicle_torque_setpoint_virtual_mc)
                : ORB_ID(vehicle_torque_setpoint)),
-      _loop_perf(perf_alloc(PC_ELAPSED, MODULE_NAME ": cycle")) {
+      _loop_perf(perf_alloc(PC_ELAPSED, MODULE_NAME ": cycle")),
+      _vehicle_attitude_sub(ORB_ID(vehicle_attitude)) // add attitude sub
+{
   _vehicle_status.vehicle_type = vehicle_status_s::VEHICLE_TYPE_ROTARY_WING;
 
   parameters_updated();
@@ -66,7 +95,6 @@ bool MulticopterRateControl::init() {
     PX4_ERR("callback registration failed");
     return false;
   }
-
   return true;
 }
 
@@ -102,6 +130,14 @@ void MulticopterRateControl::parameters_updated() {
                             radians(_param_mc_acro_y_max.get()));
 
   _output_lpf_yaw.setCutoffFreq(_param_mc_yaw_tq_cutoff.get());
+
+  // ---- SL heading param sanity + seed module state ----
+  // Only needed if you enabled these params in the header.
+  const float hdg_deg = wrap_deg_pm180(_param_sl_head_deg.get());
+  _param_sl_head_deg.set(hdg_deg); // keep param bounded
+  if (!PX4_ISFINITE(g_sl_heading_rad)) {
+    g_sl_heading_rad = radians(hdg_deg);
+  }
 }
 
 void MulticopterRateControl::Run() {
@@ -138,6 +174,14 @@ void MulticopterRateControl::Run() {
     const Vector3f rates{angular_velocity.xyz};
     const Vector3f angular_accel{angular_velocity.xyz_derivative};
 
+    // --- current yaw from attitude ---
+    vehicle_attitude_s att{};
+    float yaw_now = NAN;
+    if (_vehicle_attitude_sub.update(&att)) {
+      const Quatf q(att.q);
+      yaw_now = quat_to_yaw(q);
+    }
+
     /* check for updates in other topics */
     _vehicle_control_mode_sub.update(&_vehicle_control_mode);
 
@@ -163,13 +207,9 @@ void MulticopterRateControl::Run() {
       if (_manual_control_setpoint_sub.update(&manual_control_setpoint)) {
 
         // ===== HORIZONTAL-ONLY ATTITUDE CONTROL MODIFICATION START =====
-        // APPROACH: Use attitude controller for horizontal stabilization
-        // - Roll/pitch stick inputs → attitude setpoints → automatic stabilization
-        // - Yaw stick input → rate control for continuous rotation
-        // - Altitude fixed by tether constraint
 
-        // Apply deadband to stick inputs to prevent drift
-        const float deadband = 0.05f; // 5% deadband around center
+        // Deadband to prevent drift
+        const float deadband = 0.05f;
         float roll_input = (fabsf(manual_control_setpoint.roll) > deadband)
                                ? manual_control_setpoint.roll
                                : 0.0f;
@@ -180,41 +220,89 @@ void MulticopterRateControl::Run() {
                               ? manual_control_setpoint.yaw
                               : 0.0f;
 
-        // ATTITUDE SETPOINT APPROACH: Convert stick inputs to attitude targets
-        // Maximum tilt angles for horizontal thrust (tunable parameters)
-        // INCREASED for stronger horizontal thrust with horizontal rotors
-        const float max_roll_angle = radians(35.0f);   // Max roll angle for Y-axis movement (increased from 15°)
-        const float max_pitch_angle = radians(35.0f);  // Max pitch angle for X-axis movement (increased from 15°)
-        
-        // Convert stick inputs to attitude setpoints instead of rates
-        // This allows attitude controller to provide automatic stabilization
-        const Vector3f attitude_setpoint{
-            roll_input * max_roll_angle,    // Roll angle setpoint for Y movement
-            pitch_input * max_pitch_angle,  // Pitch angle setpoint for X movement
-            0.0f  // No yaw angle setpoint (use rate control instead)
-        };
+        // Max tilt angles (tunable)
+        const float max_roll_angle = radians(35.0f);
+        const float max_pitch_angle = radians(35.0f);
 
-        // Convert attitude setpoints to rate setpoints for current control loop
-        // This is a simplified approach - normally done by mc_att_control
-        // INCREASED gain for faster attitude response and stronger thrust
-        const float attitude_to_rate_gain = 4.0f; // Tunable gain (increased from 2.0)
-        _rates_setpoint(0) = attitude_setpoint(0) * attitude_to_rate_gain; // Roll rate
-        _rates_setpoint(1) = attitude_setpoint(1) * attitude_to_rate_gain; // Pitch rate
-        
-        // Yaw rate control with reduced aggressiveness to prevent oscillations
-        // REDUCED rate for smoother yaw control
-        const float yaw_rate_scale = 0.3f; // Scale down yaw rate (was 1.0, now 0.3)
-        _rates_setpoint(2) = math::superexpo(yaw_input, _param_mc_acro_expo_y.get(),
-                                           _param_mc_acro_supexpoy.get()) * _acro_rate_max(2) * yaw_rate_scale;
+        const Vector3f attitude_setpoint{roll_input * max_roll_angle,
+                                         pitch_input * max_pitch_angle, 0.0f};
 
-        // FIXED THRUST CONFIGURATION FOR TETHERED DRONE
-        const float hover_thrust = -0.5f; // Fixed vertical thrust for altitude hold
-        
-        // Fixed thrust - no horizontal thrust commands needed
-        // Horizontal movement comes from attitude (roll/pitch) changes
-        _thrust_setpoint(0) = 0.0f; // No direct X thrust
-        _thrust_setpoint(1) = 0.0f; // No direct Y thrust  
-        _thrust_setpoint(2) = hover_thrust; // Fixed Z thrust for hover
+        // attitude -> rate mapping
+        const float attitude_to_rate_gain = 4.0f;
+        _rates_setpoint(0) = attitude_setpoint(0) * attitude_to_rate_gain;
+        _rates_setpoint(1) = attitude_setpoint(1) * attitude_to_rate_gain;
+
+        // ---- SL HEADING (yaw) ----
+        // Seed target from param if needed
+        if (!PX4_ISFINITE(g_sl_heading_rad)) {
+          g_sl_heading_rad = radians(wrap_deg_pm180(_param_sl_head_deg.get()));
+        }
+
+        const bool sl_enabled = (_param_sl_head_en.get() == 1);
+        const float yaw_stick_abs = fabsf(yaw_input);
+        const bool pilot_yaw_active = (yaw_stick_abs > deadband);
+
+        if (sl_enabled && PX4_ISFINITE(yaw_now)) {
+
+          if (pilot_yaw_active) {
+            // Pilot override: yaw stick directly commands yaw rate (smooth)
+            const float yaw_rate_scale = 0.3f;
+            _rates_setpoint(2) =
+                math::superexpo(yaw_input, _param_mc_acro_expo_y.get(),
+                                _param_mc_acro_supexpoy.get()) *
+                _acro_rate_max(2) * yaw_rate_scale;
+
+            // While pilot is rotating, make the SL target follow actual yaw,
+            // so when the stick is released we hold the new heading.
+            g_sl_heading_rad = yaw_now;
+
+            // Push updated heading back into the param at ~5Hz (runtime value).
+            const uint64_t sync_period_us = 200000; // 0.2s
+            if (now - g_sl_param_sync_last > sync_period_us) {
+              const float deg = wrap_deg_pm180(math::degrees(g_sl_heading_rad));
+              _param_sl_head_deg.set(deg);
+              g_sl_param_sync_last = now;
+            }
+
+          } else {
+            // No pilot input: hold/drive to target heading using P on error
+            const float kp = _param_sl_yaw_p.get(); // rad/s per rad
+            const float err = wrap_pi(g_sl_heading_rad - yaw_now);
+            float yaw_rate_cmd = kp * err;
+            yaw_rate_cmd = math::constrain(yaw_rate_cmd, -_acro_rate_max(2),
+                                           _acro_rate_max(2));
+            _rates_setpoint(2) = yaw_rate_cmd;
+
+            // Keep param value synced occasionally in case someone changed
+            // target via GCS
+            const uint64_t sync_period_us = 1000000; // 1s
+            if (now - g_sl_param_sync_last > sync_period_us) {
+              const float deg = wrap_deg_pm180(math::degrees(g_sl_heading_rad));
+              _param_sl_head_deg.set(deg);
+              g_sl_param_sync_last = now;
+            }
+          }
+
+        } else {
+          // SL disabled or yaw invalid: stick-based yaw only
+          const float yaw_rate_scale = 0.3f;
+          _rates_setpoint(2) =
+              math::superexpo(yaw_input, _param_mc_acro_expo_y.get(),
+                              _param_mc_acro_supexpoy.get()) *
+              _acro_rate_max(2) * yaw_rate_scale;
+
+          // If SL disabled but the user is rotating now and later enables SL,
+          // seed target to current yaw to avoid jump.
+          if (pilot_yaw_active && PX4_ISFINITE(yaw_now)) {
+            g_sl_heading_rad = yaw_now;
+          }
+        }
+
+        // Fixed thrust
+        const float hover_thrust = -0.5f; // your fixed vertical thrust
+        _thrust_setpoint(0) = 0.0f;
+        _thrust_setpoint(1) = 0.0f;
+        _thrust_setpoint(2) = hover_thrust;
 
         // ===== HORIZONTAL-ONLY ATTITUDE CONTROL MODIFICATION END =====
 
@@ -236,9 +324,26 @@ void MulticopterRateControl::Run() {
         _rates_setpoint(1) = PX4_ISFINITE(vehicle_rates_setpoint.pitch)
                                  ? vehicle_rates_setpoint.pitch
                                  : rates(1);
-        _rates_setpoint(2) = PX4_ISFINITE(vehicle_rates_setpoint.yaw)
-                                 ? vehicle_rates_setpoint.yaw
-                                 : rates(2);
+
+        // For offboard/controllers: if yaw setpoint is finite, use it.
+        // Otherwise, if SL is enabled and we have yaw, use heading-hold.
+        if (PX4_ISFINITE(vehicle_rates_setpoint.yaw)) {
+          _rates_setpoint(2) = vehicle_rates_setpoint.yaw;
+        } else if (_param_sl_head_en.get() == 1 && PX4_ISFINITE(yaw_now)) {
+          if (!PX4_ISFINITE(g_sl_heading_rad)) {
+            g_sl_heading_rad =
+                radians(wrap_deg_pm180(_param_sl_head_deg.get()));
+          }
+          const float kp = _param_sl_yaw_p.get();
+          const float err = wrap_pi(g_sl_heading_rad - yaw_now);
+          float yaw_rate_cmd = kp * err;
+          yaw_rate_cmd = math::constrain(yaw_rate_cmd, -_acro_rate_max(2),
+                                         _acro_rate_max(2));
+          _rates_setpoint(2) = yaw_rate_cmd;
+        } else {
+          _rates_setpoint(2) = rates(2);
+        }
+
         _thrust_setpoint = Vector3f(vehicle_rates_setpoint.thrust_body);
       }
     }
@@ -297,25 +402,13 @@ void MulticopterRateControl::Run() {
 
       _thrust_setpoint.copyTo(vehicle_thrust_setpoint.xyz);
 
-      // ===== ATTITUDE CONTROL ENABLED FOR HORIZONTAL STABILIZATION =====
-      // ENABLE roll and pitch torque for attitude-based horizontal control
-      // This allows the rate controller to generate torque commands that will
-      // create the desired roll/pitch angles for horizontal movement and stabilization
-      vehicle_torque_setpoint.xyz[0] = PX4_ISFINITE(torque_setpoint(0)) 
-                                           ? torque_setpoint(0) 
-                                           : 0.f; // Enable roll torque for Y-axis control
-      vehicle_torque_setpoint.xyz[1] = PX4_ISFINITE(torque_setpoint(1)) 
-                                           ? torque_setpoint(1) 
-                                           : 0.f; // Enable pitch torque for X-axis control
-      vehicle_torque_setpoint.xyz[2] = PX4_ISFINITE(torque_setpoint(2))
-                                           ? torque_setpoint(2)
-                                           : 0.f; // Keep yaw torque for rotation
-
-      // NOTE: These torque commands will create small roll/pitch angles that:
-      // 1. Generate horizontal thrust for movement (when stick input active)  
-      // 2. Provide automatic stabilization (when sticks centered)
-      // 3. Resist external disturbances (attitude controller fights unwanted tilts)
-      // ===== END ATTITUDE CONTROL SETUP =====
+      // Enable all 3 torque axes
+      vehicle_torque_setpoint.xyz[0] =
+          PX4_ISFINITE(torque_setpoint(0)) ? torque_setpoint(0) : 0.f;
+      vehicle_torque_setpoint.xyz[1] =
+          PX4_ISFINITE(torque_setpoint(1)) ? torque_setpoint(1) : 0.f;
+      vehicle_torque_setpoint.xyz[2] =
+          PX4_ISFINITE(torque_setpoint(2)) ? torque_setpoint(2) : 0.f;
 
       // scale setpoints by battery status if enabled
       if (_param_mc_bat_scale_en.get()) {
@@ -424,19 +517,17 @@ int MulticopterRateControl::print_usage(const char *reason) {
       R"DESCR_STR(
 ### Description
 This implements the multicopter rate controller modified for horizontal-only movement
-using attitude-based control for stabilization.
-It takes rate setpoints (in acro mode via `manual_control_setpoint` topic) as inputs 
-and outputs actuator control messages.
+using attitude-based control for stabilization and SL heading hold.
 
 HORIZONTAL-ONLY MODIFICATIONS:
 - Roll and pitch stick inputs generate attitude setpoints for horizontal movement
 - Attitude controller provides automatic stabilization when sticks are centered
 - Vertical thrust is fixed for altitude hold (tethered constraint)
 - Yaw rate control provides continuous rotation capability
-- Roll/pitch torque enabled for attitude-based horizontal control and disturbance rejection
+- SL heading: when enabled, yaw holds a parameterized heading. Manual yaw temporarily overrides and updates the target.
 
 The controller uses PID loops for all three axes with attitude setpoint conversion
-for roll/pitch (horizontal stabilization) and direct rate control for yaw (rotation).
+for roll/pitch (horizontal stabilization) and yaw heading-hold or manual yaw.
 
 )DESCR_STR");
 
