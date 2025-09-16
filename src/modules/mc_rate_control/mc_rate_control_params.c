@@ -305,3 +305,21 @@ PARAM_DEFINE_INT32(MC_BAT_SCALE_EN, 0);
  * @group Multicopter Rate Control
  */
 PARAM_DEFINE_FLOAT(MC_YAW_TQ_CUTOFF, 2.f);
+
+/**
+ * Torque to thrust conversion gain for horizontal drone
+ *
+ * When enabled (>0), configures the rate controller for horizontal drone operation:
+ * - Pitch torque is converted to X thrust (forward/backward movement)
+ * - Roll torque is converted to Y thrust (left/right movement)
+ * - Only yaw torque is used for rotation (clockwise/counter-clockwise)
+ * The value acts as a gain for torque-to-thrust conversion.
+ * Set to 0 for standard vertical drone configuration.
+ *
+ * @min 0
+ * @max 10.0
+ * @decimal 2
+ * @increment 0.1
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(MC_HORIZ_T2TQ, 1.0f);

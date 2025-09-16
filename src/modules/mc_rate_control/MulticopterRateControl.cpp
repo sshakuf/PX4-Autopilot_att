@@ -46,6 +46,9 @@ using math::radians;
 // Any attitude/heading shaping or manual-stick interpretation
 // should happen upstream (e.g., attitude controller).
 
+// Static member definition
+MulticopterRateControl *MulticopterRateControl::_myobject = nullptr;
+
 MulticopterRateControl::MulticopterRateControl(bool vtol)
     : ModuleParams(nullptr),
       WorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl),
@@ -104,6 +107,8 @@ void MulticopterRateControl::parameters_updated() {
 
   _output_lpf_yaw.setCutoffFreq(_param_mc_yaw_tq_cutoff.get());
 }
+
+int debugcounter = 0;
 
 void MulticopterRateControl::Run() {
   if (should_exit()) {
@@ -219,6 +224,13 @@ void MulticopterRateControl::Run() {
       // caused by rotor acceleration
       torque_setpoint(2) = _output_lpf_yaw.update(torque_setpoint(2), dt);
 
+      // Apply torque overrides BEFORE conversion (if enabled)
+      if (_torque_override_enabled) {
+        torque_setpoint(0) = _torque_override(0);
+        torque_setpoint(1) = _torque_override(1);
+        torque_setpoint(2) = _torque_override(2);
+      }
+
       // publish rate controller status
       rate_ctrl_status_s rate_ctrl_status{};
       _rate_control.getRateControlStatus(rate_ctrl_status);
@@ -229,15 +241,59 @@ void MulticopterRateControl::Run() {
       vehicle_thrust_setpoint_s vehicle_thrust_setpoint{};
       vehicle_torque_setpoint_s vehicle_torque_setpoint{};
 
-      _thrust_setpoint.copyTo(vehicle_thrust_setpoint.xyz);
+      // HORIZONTAL DRONE MODIFICATION:
+      // For horizontal drone configuration:
+      // - Roll and pitch torques from attitude controller are converted to X/Y
+      // thrust
+      // - Torque is only used for yaw (clockwise/counter-clockwise rotation)
+      // - The conversion gain determines how much torque translates to thrust
 
-      // Enable all 3 torque axes
-      vehicle_torque_setpoint.xyz[0] =
-          PX4_ISFINITE(torque_setpoint(0)) ? torque_setpoint(0) : 0.f;
-      vehicle_torque_setpoint.xyz[1] =
-          PX4_ISFINITE(torque_setpoint(1)) ? torque_setpoint(1) : 0.f;
-      vehicle_torque_setpoint.xyz[2] =
-          PX4_ISFINITE(torque_setpoint(2)) ? torque_setpoint(2) : 0.f;
+      const float horiz_gain = _param_mc_horiz_t2tq.get();
+
+      if (horiz_gain > 0.0f) {
+        // Horizontal drone configuration
+        // Convert roll/pitch torques to X/Y thrust for horizontal movement
+        // Pitch torque (forward/backward tilt) -> X thrust (forward/backward
+        // movement) Roll torque (left/right tilt) -> Y thrust (left/right
+        // movement)
+
+        // Pitch torque controls forward/backward movement (X axis)
+        // Positive pitch torque = nose down = forward movement
+        vehicle_thrust_setpoint.xyz[0] = PX4_ISFINITE(torque_setpoint(1))
+                                             ? torque_setpoint(1) * horiz_gain
+                                             : 0.f;
+
+        // Roll torque controls left/right movement (Y axis)
+        // Positive roll torque = roll right = move right
+        // Negative sign to match coordinate system convention
+        vehicle_thrust_setpoint.xyz[1] = PX4_ISFINITE(torque_setpoint(0))
+                                             ? -torque_setpoint(0) * horiz_gain
+                                             : 0.f;
+
+        // No vertical thrust - drone is tethered
+        vehicle_thrust_setpoint.xyz[2] = 0.0f;
+
+        // Only use yaw torque for rotation (clockwise/counter-clockwise)
+        // Zero out roll and pitch torques as they've been converted to thrust
+        vehicle_torque_setpoint.xyz[0] =
+            0.0f; // Roll torque converted to Y thrust
+        vehicle_torque_setpoint.xyz[1] =
+            0.0f; // Pitch torque converted to X thrust
+        vehicle_torque_setpoint.xyz[2] = PX4_ISFINITE(torque_setpoint(2))
+                                             ? torque_setpoint(2)
+                                             : 0.f; // Yaw torque for rotation
+      } else {
+        // Standard vertical drone configuration
+        _thrust_setpoint.copyTo(vehicle_thrust_setpoint.xyz);
+
+        // Use all three torque axes for standard configuration
+        vehicle_torque_setpoint.xyz[0] =
+            PX4_ISFINITE(torque_setpoint(0)) ? torque_setpoint(0) : 0.f;
+        vehicle_torque_setpoint.xyz[1] =
+            PX4_ISFINITE(torque_setpoint(1)) ? torque_setpoint(1) : 0.f;
+        vehicle_torque_setpoint.xyz[2] =
+            PX4_ISFINITE(torque_setpoint(2)) ? torque_setpoint(2) : 0.f;
+      }
 
       // scale setpoints by battery status if enabled
       if (_param_mc_bat_scale_en.get()) {
@@ -262,6 +318,28 @@ void MulticopterRateControl::Run() {
         }
       }
 
+      // Apply thrust overrides after conversion (if enabled)
+      // This ensures manual thrust commands work correctly for both
+      // configurations
+      if (_thrust_override_enabled) {
+        vehicle_thrust_setpoint.xyz[0] = _thrust_override(0);
+        vehicle_thrust_setpoint.xyz[1] = _thrust_override(1);
+        vehicle_thrust_setpoint.xyz[2] = _thrust_override(2);
+      }
+
+      // Debug output before publishing
+      if (_debug_enabled) {
+        mavlink_log_info(&_mavlink_log_pub,
+                         "[DEBUG] %d  Thrust: X=%.3f Y=%.3f Z=%.3f | Torque: "
+                         "R=%.3f P=%.3f Y=%.3f",
+                         debugcounter++, (double)vehicle_thrust_setpoint.xyz[0],
+                         (double)vehicle_thrust_setpoint.xyz[1],
+                         (double)vehicle_thrust_setpoint.xyz[2],
+                         (double)vehicle_torque_setpoint.xyz[0],
+                         (double)vehicle_torque_setpoint.xyz[1],
+                         (double)vehicle_torque_setpoint.xyz[2]);
+      }
+
       vehicle_thrust_setpoint.timestamp_sample =
           angular_velocity.timestamp_sample;
       vehicle_thrust_setpoint.timestamp = hrt_absolute_time();
@@ -271,6 +349,10 @@ void MulticopterRateControl::Run() {
           angular_velocity.timestamp_sample;
       vehicle_torque_setpoint.timestamp = hrt_absolute_time();
       _vehicle_torque_setpoint_pub.publish(vehicle_torque_setpoint);
+
+      // Store latest setpoints for debugging
+      _last_thrust_setpoint = vehicle_thrust_setpoint;
+      _last_torque_setpoint = vehicle_torque_setpoint;
 
       updateActuatorControlsStatus(vehicle_torque_setpoint, dt);
     }
@@ -314,6 +396,7 @@ int MulticopterRateControl::task_spawn(int argc, char *argv[]) {
   MulticopterRateControl *instance = new MulticopterRateControl(vtol);
 
   if (instance) {
+    _myobject = instance;
     _object.store(instance);
     _task_id = task_id_is_work_queue;
 
@@ -332,7 +415,199 @@ int MulticopterRateControl::task_spawn(int argc, char *argv[]) {
   return PX4_ERROR;
 }
 
+void MulticopterRateControl::do1(int loop_count) {
+  PX4_INFO("=== Vehicle Thrust & Torque Setpoint Status ===");
+
+  // Check if we're in horizontal drone mode
+  const float horiz_gain = _param_mc_horiz_t2tq.get();
+  if (horiz_gain > 0.0f) {
+    PX4_INFO("Horizontal drone mode active (gain=%.3f)", (double)horiz_gain);
+    PX4_INFO("Note: Roll/Pitch torques are converted to Y/X thrust");
+  } else {
+    PX4_INFO("Standard vertical drone mode");
+  }
+
+  // Show override status
+  PX4_INFO("Thrust override: %s | Torque override: %s",
+           _thrust_override_enabled ? "ENABLED" : "disabled",
+           _torque_override_enabled ? "ENABLED" : "disabled");
+
+  PX4_INFO("Iteration | Thrust[X,Y,Z] | Torque[Roll,Pitch,Yaw]");
+  PX4_INFO("----------|---------------|------------------------");
+
+  for (int i = 0; i < loop_count; i++) {
+    // Print thrust setpoint (X, Y, Z)
+    PX4_INFO("%9d | [%6.3f,%6.3f,%6.3f] | [%6.3f,%6.3f,%6.3f]", i,
+             (double)_last_thrust_setpoint.xyz[0],  // X thrust
+             (double)_last_thrust_setpoint.xyz[1],  // Y thrust
+             (double)_last_thrust_setpoint.xyz[2],  // Z thrust
+             (double)_last_torque_setpoint.xyz[0],  // Roll torque
+             (double)_last_torque_setpoint.xyz[1],  // Pitch torque
+             (double)_last_torque_setpoint.xyz[2]); // Yaw torque
+
+    px4_usleep(500000); // Sleep for 500ms between iterations
+  }
+
+  PX4_INFO("=== End of Status Report ===");
+}
+
+void MulticopterRateControl::setTorque(float roll, float pitch, float yaw) {
+  _torque_override(0) = roll;
+  _torque_override(1) = pitch;
+  _torque_override(2) = yaw;
+  _torque_override_enabled = true;
+  PX4_INFO("Torque override set: Roll=%.3f, Pitch=%.3f, Yaw=%.3f", (double)roll,
+           (double)pitch, (double)yaw);
+}
+
+void MulticopterRateControl::setThrust(float x, float y, float z) {
+  _thrust_override(0) = x;
+  _thrust_override(1) = y;
+  _thrust_override(2) = z;
+  _thrust_override_enabled = true;
+  PX4_INFO("Thrust override set: X=%.3f, Y=%.3f, Z=%.3f", (double)x, (double)y,
+           (double)z);
+}
+
+void MulticopterRateControl::clearTorque() {
+  _torque_override_enabled = false;
+  _torque_override.zero();
+  PX4_INFO("Torque override cleared");
+}
+
+void MulticopterRateControl::clearThrust() {
+  _thrust_override_enabled = false;
+  _thrust_override.zero();
+  PX4_INFO("Thrust override cleared");
+}
+
+void MulticopterRateControl::toggleDebug() {
+  _debug_enabled = !_debug_enabled;
+  if (_debug_enabled) {
+    mavlink_log_info(
+        &_mavlink_log_pub,
+        "Debug mode ENABLED - Thrust/Torque values will be printed");
+    PX4_INFO("Debug mode ENABLED");
+  } else {
+    mavlink_log_info(&_mavlink_log_pub, "Debug mode DISABLED");
+    PX4_INFO("Debug mode DISABLED");
+  }
+}
+
+void MulticopterRateControl::testAxes() {
+  PX4_INFO("=== Testing Individual Axes (Horizontal Drone Mode) ===");
+  const float horiz_gain = _param_mc_horiz_t2tq.get();
+
+  if (horiz_gain > 0.0f) {
+    PX4_INFO("Horizontal mode active (gain=%.3f)", (double)horiz_gain);
+    PX4_INFO("\nTesting each axis for 2 seconds...\n");
+
+    // Test X thrust (forward/backward)
+    PX4_INFO("Testing X thrust (forward) = 0.3...");
+    setThrust(0.3f, 0.0f, 0.0f);
+    px4_usleep(2000000);
+
+    PX4_INFO("Testing X thrust (backward) = -0.3...");
+    setThrust(-0.3f, 0.0f, 0.0f);
+    px4_usleep(2000000);
+    clearThrust();
+    px4_usleep(500000);
+
+    // Test Y thrust (left/right)
+    PX4_INFO("Testing Y thrust (right) = 0.3...");
+    setThrust(0.0f, 0.3f, 0.0f);
+    px4_usleep(2000000);
+
+    PX4_INFO("Testing Y thrust (left) = -0.3...");
+    setThrust(0.0f, -0.3f, 0.0f);
+    px4_usleep(2000000);
+    clearThrust();
+    px4_usleep(500000);
+
+    // Test Yaw torque (rotation)
+    PX4_INFO("Testing Yaw torque (CW) = 0.3...");
+    setTorque(0.0f, 0.0f, 0.3f);
+    px4_usleep(2000000);
+
+    PX4_INFO("Testing Yaw torque (CCW) = -0.3...");
+    setTorque(0.0f, 0.0f, -0.3f);
+    px4_usleep(2000000);
+    clearTorque();
+
+    PX4_INFO("\n=== Motor Response Analysis ===");
+    PX4_INFO("For a standard quadcopter in + configuration:");
+    PX4_INFO("X thrust forward (+): Motors 3,4 should spin faster");
+    PX4_INFO("X thrust backward (-): Motors 1,2 should spin faster");
+    PX4_INFO("Y thrust right (+): Motors 2,4 should spin faster");
+    PX4_INFO("Y thrust left (-): Motors 1,3 should spin faster");
+    PX4_INFO("Yaw CW (+): Motors 1,3 faster, 2,4 slower");
+    PX4_INFO("Yaw CCW (-): Motors 2,4 faster, 1,3 slower");
+
+    PX4_INFO("\nIf Motor 1 doesn't respond to Y thrust left (-0.3),");
+    PX4_INFO("check the control allocation matrix configuration.");
+
+  } else {
+    PX4_INFO("Not in horizontal mode. Set MC_HORIZ_T2TQ > 0");
+  }
+}
 int MulticopterRateControl::custom_command(int argc, char *argv[]) {
+
+  MulticopterRateControl *instance = _myobject;
+
+  if (!instance) {
+    PX4_ERR("Instance not running");
+    return PX4_ERROR;
+  }
+
+  if (argc >= 1) {
+    if (strcmp(argv[0], "do1") == 0) {
+      int loop_count = 10; // Default value
+      if (argc >= 2) {
+        loop_count = atoi(argv[1]);
+        if (loop_count <= 0) {
+          PX4_WARN("Invalid loop count, using default 10");
+          loop_count = 10;
+        }
+      }
+      instance->do1(loop_count);
+      return PX4_OK;
+    } else if (strcmp(argv[0], "settorque") == 0) {
+      if (argc >= 4) {
+        float roll = strtof(argv[1], nullptr);
+        float pitch = strtof(argv[2], nullptr);
+        float yaw = strtof(argv[3], nullptr);
+        instance->setTorque(roll, pitch, yaw);
+        return PX4_OK;
+      } else {
+        PX4_ERR("Usage: settorque <roll> <pitch> <yaw>");
+        return PX4_ERROR;
+      }
+    } else if (strcmp(argv[0], "setthrust") == 0) {
+      if (argc >= 4) {
+        float x = strtof(argv[1], nullptr);
+        float y = strtof(argv[2], nullptr);
+        float z = strtof(argv[3], nullptr);
+        instance->setThrust(x, y, z);
+        return PX4_OK;
+      } else {
+        PX4_ERR("Usage: setthrust <x> <y> <z>");
+        return PX4_ERROR;
+      }
+    } else if (strcmp(argv[0], "cleartorque") == 0) {
+      instance->clearTorque();
+      return PX4_OK;
+    } else if (strcmp(argv[0], "clearthrust") == 0) {
+      instance->clearThrust();
+      return PX4_OK;
+    } else if (strcmp(argv[0], "testaxes") == 0) {
+      instance->testAxes();
+      return PX4_OK;
+    } else if (strcmp(argv[0], "debug") == 0) {
+      instance->toggleDebug();
+      return PX4_OK;
+    }
+  }
+
   return print_usage("unknown command");
 }
 
@@ -358,6 +633,29 @@ must be handled upstream.
   PRINT_MODULE_USAGE_COMMAND("start");
   PRINT_MODULE_USAGE_ARG("vtol", "VTOL mode", true);
   PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
+
+  PRINT_MODULE_USAGE_COMMAND_DESCR("do1", "Print thrust/torque status");
+  PRINT_MODULE_USAGE_ARG("[loop_count]", "Number of iterations (default: 10)",
+                         true);
+
+  PRINT_MODULE_USAGE_COMMAND_DESCR("settorque", "Override torque setpoint");
+  PRINT_MODULE_USAGE_ARG("<roll>", "Roll torque value", false);
+  PRINT_MODULE_USAGE_ARG("<pitch>", "Pitch torque value", false);
+  PRINT_MODULE_USAGE_ARG("<yaw>", "Yaw torque value", false);
+
+  PRINT_MODULE_USAGE_COMMAND_DESCR("setthrust", "Override thrust setpoint");
+  PRINT_MODULE_USAGE_ARG("<x>", "X thrust value", false);
+  PRINT_MODULE_USAGE_ARG("<y>", "Y thrust value", false);
+  PRINT_MODULE_USAGE_ARG("<z>", "Z thrust value", false);
+
+  PRINT_MODULE_USAGE_COMMAND_DESCR("cleartorque", "Clear torque override");
+  PRINT_MODULE_USAGE_COMMAND_DESCR("clearthrust", "Clear thrust override");
+
+  PRINT_MODULE_USAGE_COMMAND_DESCR("testaxes",
+                                   "Test individual axes systematically");
+
+  PRINT_MODULE_USAGE_COMMAND_DESCR(
+      "debug", "Toggle debug mode to print thrust/torque values");
 
   return 0;
 }
