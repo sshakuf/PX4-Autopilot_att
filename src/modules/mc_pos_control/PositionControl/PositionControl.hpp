@@ -186,6 +186,18 @@ public:
 	void getAttitudeSetpoint(vehicle_attitude_setpoint_s &attitude_setpoint) const;
 
 	/**
+	 * Get the direct thrust setpoint for horizontal-only operation
+	 * @param thrust_sp reference to thrust vector to fill
+	 */
+	void getThrustSetpoint(matrix::Vector3f &thrust_sp) const { thrust_sp = _thr_sp; }
+
+	/**
+	 * Get the yaw rate setpoint
+	 * @return yaw rate setpoint in rad/s
+	 */
+	float getYawRateSetpoint() const { return _yawspeed_sp; }
+
+	/**
 	 * All setpoints are set to NAN (uncontrolled). Timestampt zero.
 	 */
 	static const trajectory_setpoint_s empty_trajectory_setpoint;

@@ -57,7 +57,9 @@ Vector2f StickTiltXY::generateAccelerationSetpoints(Vector2f stick_xy, const flo
 		const float yaw_setpoint)
 {
 	Sticks::limitStickUnitLengthXY(stick_xy);
-	_man_input_filter.setParameters(dt, _param_mc_man_tilt_tau.get());
+	// For horizontal-only drone, use a fixed time constant instead of parameter
+	// Using 0.0 for no filtering to get direct response
+	_man_input_filter.setParameters(dt, 0.0f);
 	stick_xy = _man_input_filter.update(stick_xy);
 	Sticks::rotateIntoHeadingFrameXY(stick_xy, yaw, yaw_setpoint);
 	return stick_xy * _maximum_acceleration;
