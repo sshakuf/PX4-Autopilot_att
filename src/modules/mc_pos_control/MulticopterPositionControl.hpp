@@ -38,7 +38,6 @@
 #pragma once
 
 #include "PositionControl/PositionControl.hpp"
-#include "Takeoff/Takeoff.hpp"
 #include "GotoControl/GotoControl.hpp"
 
 #include <drivers/drv_hrt.h>
@@ -94,11 +93,7 @@ public:
 private:
 	void Run() override;
 
-	TakeoffHandling _takeoff; /**< state machine and ramp to bring the vehicle off the ground without jumps */
-
 	orb_advert_t _mavlink_log_pub{nullptr};
-
-	uORB::PublicationData<takeoff_status_s>              _takeoff_status_pub{ORB_ID(takeoff_status)};
 	uORB::Publication<vehicle_attitude_setpoint_s>	     _vehicle_attitude_setpoint_pub{ORB_ID(vehicle_attitude_setpoint)};
 	uORB::Publication<vehicle_local_position_setpoint_s> _local_pos_sp_pub{ORB_ID(vehicle_local_position_setpoint)};	/**< vehicle local position setpoint publication */
 	uORB::Publication<vehicle_thrust_setpoint_s>         _vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};	/**< direct thrust setpoint publication */
@@ -162,20 +157,12 @@ private:
 		(ParamFloat<px4::params::MPC_VEL_NF_BW>)    _param_mpc_vel_nf_bw,
 		(ParamFloat<px4::params::MPC_VELD_LP>)      _param_mpc_veld_lp,
 
-		// Takeoff / Land
-		(ParamFloat<px4::params::COM_SPOOLUP_TIME>) _param_com_spoolup_time, /**< time to let motors spool up after arming */
-		(ParamBool<px4::params::COM_THROW_EN>)      _param_com_throw_en, /**< throw launch enabled  */
-		(ParamFloat<px4::params::MPC_TKO_RAMP_T>)   _param_mpc_tko_ramp_t,   /**< time constant for smooth takeoff ramp */
-		(ParamFloat<px4::params::MPC_TKO_SPEED>)    _param_mpc_tko_speed,
-		(ParamFloat<px4::params::MPC_LAND_SPEED>)   _param_mpc_land_speed,
 
 		(ParamFloat<px4::params::MPC_VEL_MANUAL>)   _param_mpc_vel_manual,
 		(ParamFloat<px4::params::MPC_VEL_MAN_BACK>) _param_mpc_vel_man_back,
 		(ParamFloat<px4::params::MPC_VEL_MAN_SIDE>) _param_mpc_vel_man_side,
 		(ParamFloat<px4::params::MPC_XY_CRUISE>)    _param_mpc_xy_cruise,
-		(ParamFloat<px4::params::MPC_LAND_ALT2>)    _param_mpc_land_alt2,    /**< downwards speed limited below this altitude */
 		(ParamInt<px4::params::MPC_ALT_MODE>)       _param_mpc_alt_mode,
-		(ParamFloat<px4::params::MPC_TILTMAX_LND>)  _param_mpc_tiltmax_lnd,  /**< maximum tilt for landing and smooth takeoff */
 		(ParamFloat<px4::params::MPC_THR_MIN>)      _param_mpc_thr_min,
 		(ParamFloat<px4::params::MPC_THR_MAX>)      _param_mpc_thr_max,
 		(ParamFloat<px4::params::MPC_THR_XY_MARG>)  _param_mpc_thr_xy_marg,
@@ -219,12 +206,6 @@ private:
 	/** Timeout in us for trajectory data to get considered invalid */
 	static constexpr uint64_t TRAJECTORY_STREAM_TIMEOUT_US = 500_ms;
 
-	/** During smooth-takeoff, below ALTITUDE_THRESHOLD the yaw-control is turned off and tilt is limited */
-	static constexpr float ALTITUDE_THRESHOLD = 0.3f;
-
-	static constexpr float MAX_SAFE_TILT_DEG = 89.f; // Numerical issues above this value due to tanf
-
-	SlewRate<float> _tilt_limit_slew_rate;
 
 	uint8_t _vxy_reset_counter{0};
 	uint8_t _vz_reset_counter{0};

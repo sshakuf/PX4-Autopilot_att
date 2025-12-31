@@ -96,8 +96,8 @@ public:
 	/**
 	 * Set the maximum velocity to execute with feed forward and position control
 	 * @param vel_horizontal horizontal velocity limit
-	 * @param vel_up upwards velocity limit
-	 * @param vel_down downwards velocity limit
+	 * @param vel_up not used for horizontal-only drone
+	 * @param vel_down not used for horizontal-only drone
 	 */
 	void setVelocityLimits(const float vel_horizontal, const float vel_up, float vel_down);
 
@@ -109,16 +109,16 @@ public:
 	void setThrustLimits(const float min, const float max);
 
 	/**
-	 * Set margin that is kept for horizontal control when prioritizing vertical thrust
-	 * @param margin of normalized thrust that is kept for horizontal control e.g. 0.3
+	 * Set margin for horizontal thrust - not used for horizontal-only drone
+	 * @param margin of normalized thrust
 	 */
 	void setHorizontalThrustMargin(const float margin);
 
 	/**
-	 * Set the maximum tilt angle in radians the output attitude is allowed to have
+	 * Set the maximum tilt angle - not used for horizontal-only drone (always level)
 	 * @param tilt angle in radians from level orientation
 	 */
-	void setTiltLimit(const float tilt) { _lim_tilt = tilt; }
+	void setTiltLimit(const float tilt) { _lim_tilt = 0.0f; /* Always level */ }
 
 	/**
 	 * Set the normalized hover thrust
@@ -165,9 +165,9 @@ public:
 	void resetIntegralXY() { _vel_int.xy() = matrix::Vector2f(); }
 
 	/**
-	 * If set, the tilt setpoint is computed by assuming no vertical acceleration
+	 * Not used for horizontal-only drone
 	 */
-	void decoupleHorizontalAndVecticalAcceleration(bool val) { _decouple_horizontal_and_vertical_acceleration = val; }
+	void decoupleHorizontalAndVecticalAcceleration(bool val) { /* Not used */ }
 
 	/**
 	 * Get the controllers output local position setpoint

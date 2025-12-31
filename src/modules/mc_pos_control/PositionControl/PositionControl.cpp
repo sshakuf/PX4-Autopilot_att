@@ -62,8 +62,9 @@ void PositionControl::setVelocityLimits(const float vel_horizontal,
                                         const float vel_up,
                                         const float vel_down) {
   _lim_vel_horizontal = vel_horizontal;
-  _lim_vel_up = vel_up;
-  _lim_vel_down = vel_down;
+  // Vertical limits not used for horizontal-only drone
+  _lim_vel_up = 0.0f;
+  _lim_vel_down = 0.0f;
 }
 
 void PositionControl::setThrustLimits(const float min, const float max) {
@@ -77,19 +78,8 @@ void PositionControl::setHorizontalThrustMargin(const float margin) {
 }
 
 void PositionControl::updateHoverThrust(const float hover_thrust_new) {
-  // Given that the equation for thrust is T = a_sp * Th / g - Th
-  // with a_sp = desired acceleration, Th = hover thrust and g = gravity
-  // constant, we want to find the acceleration that needs to be added to the
-  // integrator in order obtain the same thrust after replacing the current
-  // hover thrust by the new one. T' = T => a_sp' * Th' / g - Th' = a_sp * Th /
-  // g - Th so a_sp' = (a_sp - g) * Th / Th' + g we can then add a_sp' - a_sp to
-  // the current integrator to absorb the effect of changing Th by Th'
-  const float previous_hover_thrust = _hover_thrust;
+  // Simplified for horizontal-only drone - no vertical thrust management
   setHoverThrust(hover_thrust_new);
-
-  _vel_int(2) +=
-      (_acc_sp(2) - CONSTANTS_ONE_G) * previous_hover_thrust / _hover_thrust +
-      CONSTANTS_ONE_G - _acc_sp(2);
 }
 
 void PositionControl::setState(const PositionControlStates &states) {
@@ -129,24 +119,6 @@ void PositionControl::_positionControl() {
   // P-position controller - Horizontal-only drone modification
   Vector3f vel_sp_position = (_pos_sp - _pos).emult(_gain_pos_p);
 
-  // Debug: Enhanced logging for position control
-  static int debug_counter = 0;
-  if (++debug_counter >= 50) { // Print every 50 cycles
-    debug_counter = 0;
-
-    // Log position errors and gains
-    Vector2f pos_error = _pos_sp.xy() - _pos.xy();
-    PX4_INFO("[POS_CTRL] Pos SP[%.3f,%.3f] - Pos[%.3f,%.3f] = Error[%.3f,%.3f]",
-             PX4_ISFINITE(_pos_sp(0)) ? (double)_pos_sp(0) : (double)NAN,
-             PX4_ISFINITE(_pos_sp(1)) ? (double)_pos_sp(1) : (double)NAN,
-             PX4_ISFINITE(_pos(0)) ? (double)_pos(0) : (double)NAN,
-             PX4_ISFINITE(_pos(1)) ? (double)_pos(1) : (double)NAN,
-             (double)pos_error(0), (double)pos_error(1));
-
-    PX4_INFO("[POS_CTRL] Gain P[%.2f,%.2f] -> Vel cmd[%.3f,%.3f]",
-             (double)_gain_pos_p(0), (double)_gain_pos_p(1),
-             (double)vel_sp_position(0), (double)vel_sp_position(1));
-  }
 
   // Position and feed-forward velocity setpoints or position states being NAN
   // results in them not having an influence
@@ -174,15 +146,6 @@ void PositionControl::_velocityControl(const float dt) {
   // Zero out vertical velocity error for horizontal-only drone
   vel_error(2) = 0.0f;
 
-  // Debug: Log velocity control
-  static int vel_debug_counter = 0;
-  if (++vel_debug_counter >= 50) {
-    vel_debug_counter = 0;
-    PX4_INFO("[VEL_CTRL] Vel SP[%.3f,%.3f] - Vel[%.3f,%.3f] = Error[%.3f,%.3f]",
-             (double)_vel_sp(0), (double)_vel_sp(1),
-             (double)_vel(0), (double)_vel(1),
-             (double)vel_error(0), (double)vel_error(1));
-  }
 
   // Compute acceleration setpoint from velocity error (horizontal only)
   Vector3f acc_sp_velocity =
@@ -191,16 +154,6 @@ void PositionControl::_velocityControl(const float dt) {
   // Force zero vertical acceleration for horizontal-only drone
   acc_sp_velocity(2) = 0.0f;
 
-  // Debug: Log PID components
-  if (vel_debug_counter == 1) {  // Print right after the main velocity debug
-    PX4_INFO("[VEL_PID] P[%.3f,%.3f] I[%.3f,%.3f] D[%.3f,%.3f] -> Acc[%.3f,%.3f]",
-             (double)(vel_error(0) * _gain_vel_p(0)),
-             (double)(vel_error(1) * _gain_vel_p(1)),
-             (double)_vel_int(0), (double)_vel_int(1),
-             (double)(-_vel_dot(0) * _gain_vel_d(0)),
-             (double)(-_vel_dot(1) * _gain_vel_d(1)),
-             (double)acc_sp_velocity(0), (double)acc_sp_velocity(1));
-  }
 
   // No control input from setpoints or corresponding states which are NAN
   ControlMath::addIfNotNanVector3f(_acc_sp, acc_sp_velocity);
@@ -219,17 +172,10 @@ void PositionControl::_velocityControl(const float dt) {
     _thr_sp.xy() = thrust_sp_xy / thrust_sp_xy_norm * _lim_thr_max;
   }
 
-  // Use tracking Anti-Windup for horizontal direction
-  const Vector2f acc_sp_xy_produced =
-      Vector2f(_thr_sp) * (CONSTANTS_ONE_G / _hover_thrust);
-
-  // The ARW loop needs to run if the signal is saturated only.
-  if (_acc_sp.xy().norm_squared() > acc_sp_xy_produced.norm_squared()) {
-    const float arw_gain = 2.f / _gain_vel_p(0);
-    const Vector2f acc_sp_xy = _acc_sp.xy();
-
-    vel_error.xy() =
-        Vector2f(vel_error) - arw_gain * (acc_sp_xy - acc_sp_xy_produced);
+  // Anti-windup for horizontal thrust saturation
+  if (thrust_sp_xy_norm > _lim_thr_max) {
+    // Simple anti-windup: reduce velocity error when saturated
+    vel_error.xy() *= 0.9f;
   }
 
   // Make sure integral doesn't get NAN
@@ -249,11 +195,8 @@ void PositionControl::_accelerationControl() {
   // For horizontal movement, we need significant thrust to overcome inertia
   // Scale the acceleration to thrust with a reasonable gain
 
-  // Normalize accelerations to thrust range [-1, 1]
-  // Reduced max acceleration for more aggressive response
-  // Lower value = stronger thrust for same acceleration demand
-  const float max_horizontal_acc =
-      2.0f; // Reduced from 5.0 for stronger response
+  // Direct acceleration to thrust mapping for horizontal-only drone
+  const float max_horizontal_acc = 2.0f;  // m/s^2 per unit thrust
 
   _thr_sp(0) = math::constrain(_acc_sp(0) / max_horizontal_acc, -1.0f,
                                1.0f); // Fx - forward/backward thrust
@@ -270,26 +213,13 @@ void PositionControl::_accelerationControl() {
     _thr_sp.xy() = thrust_xy.normalized();
   }
 
-  // Debug: Enhanced acceleration to thrust conversion logging
-  static int thrust_debug_counter = 0;
-  if (++thrust_debug_counter >= 50) { // Print every 50 cycles
-    thrust_debug_counter = 0;
-    PX4_INFO("[ACC_CTRL] Acc SP[%.3f,%.3f,%.3f] -> Thrust[%.3f,%.3f,%.3f]",
-             (double)_acc_sp(0), (double)_acc_sp(1), (double)_acc_sp(2),
-             (double)_thr_sp(0), (double)_thr_sp(1), (double)_thr_sp(2));
-
-    if (thrust_xy_mag > 0.01f) {
-      PX4_INFO("[ACC_CTRL] Thrust magnitude: %.3f (limited: %s)",
-               (double)thrust_xy_mag, thrust_xy_mag > 1.0f ? "YES" : "NO");
-    }
-  }
 }
 
 bool PositionControl::_inputValid() {
   bool valid = true;
 
-  // Every axis x, y, z needs to have some setpoint
-  for (int i = 0; i <= 2; i++) {
+  // For horizontal-only drone, only check x and y axes
+  for (int i = 0; i <= 1; i++) {
     valid = valid && (PX4_ISFINITE(_pos_sp(i)) || PX4_ISFINITE(_vel_sp(i)) ||
                       PX4_ISFINITE(_acc_sp(i)));
   }
@@ -299,8 +229,8 @@ bool PositionControl::_inputValid() {
   valid = valid && (PX4_ISFINITE(_vel_sp(0)) == PX4_ISFINITE(_vel_sp(1)));
   valid = valid && (PX4_ISFINITE(_acc_sp(0)) == PX4_ISFINITE(_acc_sp(1)));
 
-  // For each controlled state the estimate has to be valid
-  for (int i = 0; i <= 2; i++) {
+  // For each controlled horizontal state the estimate has to be valid
+  for (int i = 0; i <= 1; i++) {
     if (PX4_ISFINITE(_pos_sp(i))) {
       valid = valid && PX4_ISFINITE(_pos(i));
     }
@@ -317,12 +247,12 @@ void PositionControl::getLocalPositionSetpoint(
     vehicle_local_position_setpoint_s &local_position_setpoint) const {
   local_position_setpoint.x = _pos_sp(0);
   local_position_setpoint.y = _pos_sp(1);
-  local_position_setpoint.z = _pos_sp(2);
+  local_position_setpoint.z = 0.0f;  // No vertical control
   local_position_setpoint.yaw = _yaw_sp;
   local_position_setpoint.yawspeed = _yawspeed_sp;
   local_position_setpoint.vx = _vel_sp(0);
   local_position_setpoint.vy = _vel_sp(1);
-  local_position_setpoint.vz = _vel_sp(2);
+  local_position_setpoint.vz = 0.0f;  // No vertical velocity
   _acc_sp.copyTo(local_position_setpoint.acceleration);
   _thr_sp.copyTo(local_position_setpoint.thrust);
 }

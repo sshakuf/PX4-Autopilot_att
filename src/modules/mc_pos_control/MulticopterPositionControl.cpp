@@ -49,8 +49,6 @@ MulticopterPositionControl::MulticopterPositionControl(bool vtol)
                                           : ORB_ID(vehicle_attitude_setpoint)) {
   _sample_interval_s.update(0.01f); // 100 Hz default
   parameters_update(true);
-  _tilt_limit_slew_rate.setSlewRate(.2f);
-  _takeoff_status_pub.advertise();
 }
 
 MulticopterPositionControl::~MulticopterPositionControl() {
@@ -142,14 +140,8 @@ void MulticopterPositionControl::parameters_update(bool force) {
             math::lerp(0.5f, 0.f, responsiveness / 0.6f));
       }
 
-      if (responsiveness < 0.5f) {
-        num_changed += _param_mpc_tiltmax_air.commit_no_notification(45.f);
-
-      } else {
-        num_changed += _param_mpc_tiltmax_air.commit_no_notification(
-            math::min(MAX_SAFE_TILT_DEG,
-                      math::lerp(45.f, 70.f, (responsiveness - 0.5f) * 2.f)));
-      }
+      // Horizontal-only drone: no tilt allowed
+      num_changed += _param_mpc_tiltmax_air.commit_no_notification(0.f);
 
       num_changed += _param_mpc_acc_down_max.commit_no_notification(
           math::lerp(0.8f, 15.f, responsiveness));
@@ -178,40 +170,16 @@ void MulticopterPositionControl::parameters_update(bool force) {
           _param_mpc_z_v_auto_dn.commit_no_notification(z_vel * 0.75f);
       num_changed +=
           _param_mpc_z_vel_max_dn.commit_no_notification(z_vel * 0.75f);
-      num_changed += _param_mpc_tko_speed.commit_no_notification(z_vel * 0.6f);
-      num_changed += _param_mpc_land_speed.commit_no_notification(z_vel * 0.5f);
     }
 
     if (num_changed > 0) {
       param_notify_changes();
     }
 
-    if (_param_mpc_tiltmax_air.get() > MAX_SAFE_TILT_DEG) {
-      _param_mpc_tiltmax_air.set(MAX_SAFE_TILT_DEG);
+    // Horizontal-only drone: ensure tilt remains at 0
+    if (_param_mpc_tiltmax_air.get() > 0.f) {
+      _param_mpc_tiltmax_air.set(0.f);
       _param_mpc_tiltmax_air.commit();
-      mavlink_log_critical(&_mavlink_log_pub,
-                           "Tilt constrained to safe value\t");
-      /* EVENT
-       * @description <param>MPC_TILTMAX_AIR</param> is set to {1:.0}.
-       */
-      events::send<float>(
-          events::ID("mc_pos_ctrl_tilt_set"), events::Log::Warning,
-          "Maximum tilt limit has been constrained to a safe value",
-          MAX_SAFE_TILT_DEG);
-    }
-
-    if (_param_mpc_tiltmax_lnd.get() > _param_mpc_tiltmax_air.get()) {
-      _param_mpc_tiltmax_lnd.set(_param_mpc_tiltmax_air.get());
-      _param_mpc_tiltmax_lnd.commit();
-      mavlink_log_critical(&_mavlink_log_pub,
-                           "Land tilt has been constrained by max tilt\t");
-      /* EVENT
-       * @description <param>MPC_TILTMAX_LND</param> is set to {1:.0}.
-       */
-      events::send<float>(
-          events::ID("mc_pos_ctrl_land_tilt_set"), events::Log::Warning,
-          "Land tilt limit has been constrained by maximum tilt",
-          _param_mpc_tiltmax_air.get());
     }
 
     _control.setPositionGains(Vector3f(
@@ -349,14 +317,6 @@ void MulticopterPositionControl::parameters_update(bool force) {
     }
 
     // initialize vectors from params and enforce constraints
-    _param_mpc_tko_speed.set(
-        math::min(_param_mpc_tko_speed.get(), _param_mpc_z_vel_max_up.get()));
-    _param_mpc_land_speed.set(
-        math::min(_param_mpc_land_speed.get(), _param_mpc_z_vel_max_dn.get()));
-
-    _takeoff.setSpoolupTime(_param_com_spoolup_time.get());
-    _takeoff.setTakeoffRampTime(_param_mpc_tko_ramp_t.get());
-    _takeoff.generateInitialRampValue(_param_mpc_z_vel_p_acc.get());
   }
 }
 
@@ -572,102 +532,20 @@ void MulticopterPositionControl::Run() {
     if (_vehicle_control_mode.flag_multicopter_position_control_enabled &&
         (_setpoint.timestamp >= _time_position_control_enabled)) {
 
-      // update vehicle constraints and handle smooth takeoff
+      // Update vehicle constraints
       _vehicle_constraints_sub.update(&_vehicle_constraints);
 
-      // fix to prevent the takeoff ramp to ramp to a too high value or get
-      // stuck because of NAN
-      // TODO: this should get obsolete once the takeoff limiting moves into the
-      // flight tasks
-      if (!PX4_ISFINITE(_vehicle_constraints.speed_up) ||
-          (_vehicle_constraints.speed_up > _param_mpc_z_vel_max_up.get())) {
-        _vehicle_constraints.speed_up = _param_mpc_z_vel_max_up.get();
-      }
+      // Horizontal-only drone: no takeoff/landing logic needed
+      // Always considered flying when armed
 
-      if (_vehicle_control_mode.flag_control_offboard_enabled) {
+      // Set hover thrust (simplified - no dynamic updates)
+      _control.setHoverThrust(_param_mpc_thr_hover.get());
 
-        const bool want_takeoff = _vehicle_control_mode.flag_armed &&
-                                  (vehicle_local_position.timestamp_sample <
-                                   _setpoint.timestamp + 1_s);
+      // Horizontal-only drone: no tilt limit (always level)
+      _control.setTiltLimit(0.0f);
 
-        if (want_takeoff && PX4_ISFINITE(_setpoint.position[2]) &&
-            (_setpoint.position[2] < states.position(2))) {
-
-          _vehicle_constraints.want_takeoff = true;
-
-        } else if (want_takeoff && PX4_ISFINITE(_setpoint.velocity[2]) &&
-                   (_setpoint.velocity[2] < 0.f)) {
-
-          _vehicle_constraints.want_takeoff = true;
-
-        } else if (want_takeoff && PX4_ISFINITE(_setpoint.acceleration[2]) &&
-                   (_setpoint.acceleration[2] < 0.f)) {
-
-          _vehicle_constraints.want_takeoff = true;
-
-        } else {
-          _vehicle_constraints.want_takeoff = false;
-        }
-
-        // override with defaults
-        _vehicle_constraints.speed_up = _param_mpc_z_vel_max_up.get();
-        _vehicle_constraints.speed_down = _param_mpc_z_vel_max_dn.get();
-      }
-
-      bool skip_takeoff = _param_com_throw_en.get();
-      // handle smooth takeoff
-      _takeoff.updateTakeoffState(
-          _vehicle_control_mode.flag_armed, _vehicle_land_detected.landed,
-          _vehicle_constraints.want_takeoff, _vehicle_constraints.speed_up,
-          skip_takeoff, vehicle_local_position.timestamp_sample);
-
-      const bool not_taken_off =
-          (_takeoff.getTakeoffState() < TakeoffState::rampup);
-      const bool flying = (_takeoff.getTakeoffState() >= TakeoffState::flight);
-      const bool flying_but_ground_contact =
-          (flying && _vehicle_land_detected.ground_contact);
-
-      if (!flying) {
-        _control.setHoverThrust(_param_mpc_thr_hover.get());
-      }
-
-      // make sure takeoff ramp is not amended by acceleration feed-forward
-      if (_takeoff.getTakeoffState() == TakeoffState::rampup &&
-          PX4_ISFINITE(_setpoint.velocity[2])) {
-        _setpoint.acceleration[2] = NAN;
-      }
-
-      if (not_taken_off || flying_but_ground_contact) {
-        // we are not flying yet and need to avoid any corrections
-        _setpoint = PositionControl::empty_trajectory_setpoint;
-        _setpoint.timestamp = vehicle_local_position.timestamp_sample;
-        Vector3f(0.f, 0.f, 100.f)
-            .copyTo(_setpoint.acceleration); // High downwards acceleration to
-                                             // make sure there's no thrust
-
-        // prevent any integrator windup
-        _control.resetIntegral();
-      }
-
-      // limit tilt during takeoff rampup
-      const float tilt_limit_deg =
-          (_takeoff.getTakeoffState() < TakeoffState::flight)
-              ? _param_mpc_tiltmax_lnd.get()
-              : _param_mpc_tiltmax_air.get();
-      _control.setTiltLimit(
-          _tilt_limit_slew_rate.update(math::radians(tilt_limit_deg), dt));
-
-      const float speed_up =
-          _takeoff.updateRamp(dt, PX4_ISFINITE(_vehicle_constraints.speed_up)
-                                      ? _vehicle_constraints.speed_up
-                                      : _param_mpc_z_vel_max_up.get());
-      const float speed_down = PX4_ISFINITE(_vehicle_constraints.speed_down)
-                                   ? _vehicle_constraints.speed_down
-                                   : _param_mpc_z_vel_max_dn.get();
-
-      // Allow ramping from zero thrust on takeoff
-      const float minimum_thrust = flying ? _param_mpc_thr_min.get() : 0.f;
-      _control.setThrustLimits(minimum_thrust, _param_mpc_thr_max.get());
+      // Set horizontal thrust limits
+      _control.setThrustLimits(_param_mpc_thr_min.get(), _param_mpc_thr_max.get());
 
       float max_speed_xy = _param_mpc_xy_vel_max.get();
 
@@ -675,12 +553,8 @@ void MulticopterPositionControl::Run() {
         max_speed_xy = math::min(max_speed_xy, vehicle_local_position.vxy_max);
       }
 
-      _control.setVelocityLimits(
-          max_speed_xy,
-          math::min(speed_up,
-                    _param_mpc_z_vel_max_up.get()), // takeoff ramp starts with
-                                                    // negative velocity limit
-          math::max(speed_down, 0.f));
+      // Set velocity limits (horizontal only, vertical speeds are 0)
+      _control.setVelocityLimits(max_speed_xy, 0.0f, 0.0f);
 
       // Fix NAN position setpoint before sending to controller
       if (!PX4_ISFINITE(_setpoint.position[0]) || !PX4_ISFINITE(_setpoint.position[1])) {
@@ -720,23 +594,7 @@ void MulticopterPositionControl::Run() {
                  (double)states.acceleration(2), (double)math::degrees(states.yaw));
       }
 
-      // update states
-      if (!PX4_ISFINITE(_setpoint.position[2]) &&
-          PX4_ISFINITE(_setpoint.velocity[2]) &&
-          (fabsf(_setpoint.velocity[2]) > FLT_EPSILON) &&
-          PX4_ISFINITE(vehicle_local_position.z_deriv) &&
-          vehicle_local_position.z_valid && vehicle_local_position.v_z_valid) {
-        // A change in velocity is demanded and the altitude is not controlled.
-        // Set velocity to the derivative of position
-        // because it has less bias but blend it in across the landing speed
-        // range
-        //  <  MPC_LAND_SPEED: ramp up using altitude derivative without a step
-        //  >= MPC_LAND_SPEED: use altitude derivative
-        float weighting = fminf(
-            fabsf(_setpoint.velocity[2]) / _param_mpc_land_speed.get(), 1.f);
-        states.velocity(2) = vehicle_local_position.z_deriv * weighting +
-                             vehicle_local_position.vz * (1.f - weighting);
-      }
+      // Horizontal-only drone: no vertical state updates needed
 
       if ((!PX4_ISFINITE(_setpoint.velocity[0]) ||
            !PX4_ISFINITE(_setpoint.velocity[1])) &&
@@ -889,26 +747,12 @@ void MulticopterPositionControl::Run() {
       _vehicle_attitude_setpoint_pub.publish(attitude_setpoint);
 
     } else {
-      // an update is necessary here because otherwise the takeoff state doesn't
-      // get skipped with non-altitude-controlled modes
-      _takeoff.updateTakeoffState(
-          _vehicle_control_mode.flag_armed, _vehicle_land_detected.landed,
-          false, 10.f, true, vehicle_local_position.timestamp_sample);
+      // Horizontal-only drone: no takeoff state machine needed
+      // Just reset integral when not in position control mode
       _control.resetIntegral();
     }
 
-    // Publish takeoff status
-    const uint8_t takeoff_state =
-        static_cast<uint8_t>(_takeoff.getTakeoffState());
-
-    if (takeoff_state != _takeoff_status_pub.get().takeoff_state ||
-        !isEqualF(_tilt_limit_slew_rate.getState(),
-                  _takeoff_status_pub.get().tilt_limit)) {
-      _takeoff_status_pub.get().takeoff_state = takeoff_state;
-      _takeoff_status_pub.get().tilt_limit = _tilt_limit_slew_rate.getState();
-      _takeoff_status_pub.get().timestamp = hrt_absolute_time();
-      _takeoff_status_pub.update();
-    }
+    // Horizontal-only drone: no takeoff status to publish
   }
 
   perf_end(_cycle_perf);
@@ -945,12 +789,12 @@ trajectory_setpoint_s MulticopterPositionControl::generateFailsafeSetpoint(
     }
 
   } else {
-    // descend with land speed since we can't stop
+    // Horizontal-only drone: no vertical control in failsafe
     failsafe_setpoint.acceleration[0] = failsafe_setpoint.acceleration[1] = 0.f;
-    failsafe_setpoint.velocity[2] = _param_mpc_land_speed.get();
+    failsafe_setpoint.velocity[2] = 0.0f;  // No vertical velocity
 
     if (warn) {
-      PX4_WARN("Failsafe: blind land");
+      PX4_WARN("Failsafe: horizontal hold only");
     }
   }
 
