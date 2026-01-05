@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (C) 2014 PX4 Development Team. All rights reserved.
+ *   Copyright (C) 2014-2025 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,7 +52,7 @@
 #include <uORB/topics/actuator_outputs.h>
 #include <uORB/topics/esc_status.h>
 #include <drivers/drv_hrt.h>
-#include <lib/mixer_module/mixer_module.hpp>
+#include <drivers/uavcan/node_info.hpp>
 #include <parameters/param.h>
 
 class UavcanEscController
@@ -69,12 +69,16 @@ public:
 
 	int init();
 
-	void update_outputs(uint16_t outputs[MAX_ACTUATORS], unsigned total_outputs);
+	bool initialized() { return _initialized; };
+
+	void update_outputs(uint16_t outputs[MAX_ACTUATORS], uint8_t output_array_size);
 
 	/**
 	 * Sets the number of rotors and enable timer
 	 */
 	void set_rotor_count(uint8_t count);
+
+	void set_node_info_publisher(NodeInfoPublisher *publisher) { _node_info_publisher = publisher; }
 
 	static int max_output_value() { return uavcan::equipment::esc::RawCommand::FieldTypes::cmd::RawValueType::max(); }
 
@@ -97,6 +101,8 @@ private:
 	typedef uavcan::MethodBinder<UavcanEscController *,
 		void (UavcanEscController::*)(const uavcan::TimerEvent &)> TimerCbBinder;
 
+	bool _initialized{};
+
 	esc_status_s	_esc_status{};
 
 	uORB::PublicationMulti<esc_status_s> _esc_status_pub{ORB_ID(esc_status)};
@@ -111,6 +117,5 @@ private:
 	uavcan::Publisher<uavcan::equipment::esc::RawCommand>			_uavcan_pub_raw_cmd;
 	uavcan::Subscriber<uavcan::equipment::esc::Status, StatusCbBinder>	_uavcan_sub_status;
 
-
-	param_t _param_handles[MAX_ACTUATORS] {PARAM_INVALID};
+	NodeInfoPublisher *_node_info_publisher{nullptr};
 };

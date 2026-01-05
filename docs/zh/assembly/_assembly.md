@@ -72,7 +72,7 @@ The FCs have much the same ports with similar names, and core peripherals are co
 | Full GPS plus Safety Switch | GPS1                             | GPS&SAFETY   | Primary GNSS module (GPS, compass, safety switch, buzzer, LED)   |
 | Basic GPS                   | GPS2                             | GPS2                             | Secondary GNSS module (GNSS/compass)                             |
 | CAN                         | CAN1/CAN2                        | CAN1/CAN2                        | DroneCAN devices, such as GNSS modules, motors, etc                                 |
-| Telemetry                   | TELEM (1,2,3) | TELEM (1,2,3) | Telemetry radios, companion computers, MAVLink cameras, etc.        |
+| 数传                          | TELEM (1,2,3) | TELEM (1,2,3) | Telemetry radios, companion computers, MAVLink cameras, etc.        |
 | Analog Power                | POWER (1,2)   | POWER (1,2)   | SMbus (I2C) power modules                                        |
 | I2C                         | I2C                              | None                             | Other I2C peripherals                                                               |
 | SPI                         | SPI                              | SPI6                             | SPI devices (note: 11 pin, not 6 as in standard) |
@@ -285,7 +285,7 @@ A particular vehicle might have more/fewer motors and actuators, but the wiring 
 The following sections explain each part in more detail.
 
 :::tip
-If you're using [DroneCAN ESC](../peripherals/esc_motors.md#dronecan) the control signals will be connected to the CAN BUS instead of the PWM outputs as shown.
+If you're using [DroneCAN ESC](../dronecan/escs.md) the control signals will be connected to the CAN BUS instead of the PWM outputs as shown.
 :::
 
 ### Flight Controller Power
@@ -421,12 +421,11 @@ They recommend sensors, power systems, and other components from the same manufa
 - [Pixracer Wiring Quickstart](../assembly/quick_start_pixracer.md)
 - [mRo (3DR) Pixhawk Wiring Quickstart](../assembly/quick_start_pixhawk.md)
 
-## See Also
+## 另见
 
 - [Drone Components & Parts](../getting_started/px4_basic_concepts.md#drone-components-parts) (Basic Concepts)
 - [Payloads](../getting_started/px4_basic_concepts.md#payloads) (Basic Concepts)
 - [Hardware Selection & Setup](../hardware/drone_parts.md) — information about connecting and configuring specific flight controllers, sensors and other peripherals (e.g. airspeed sensor for planes).
-
   - [Mounting the Flight Controller](../assembly/mount_and_orient_controller.md)
   - [Vibration Isolation](../assembly/vibration_isolation.md)
   - [Mounting a Compass](../assembly/mount_gps_compass.md)

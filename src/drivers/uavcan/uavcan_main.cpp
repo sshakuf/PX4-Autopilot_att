@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2014-2022 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2014-2025 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -107,6 +107,7 @@ UavcanNode::UavcanNode(uavcan::ICanDriver &can_driver, uavcan::ISystemClock &sys
 	_time_sync_slave(_node),
 	_node_status_monitor(_node),
 	_node_info_retriever(_node),
+	_node_info_publisher(_node, _node_info_retriever),
 	_master_timer(_node),
 	_param_getset_client(_node),
 	_param_opcode_client(_node),
@@ -529,10 +530,16 @@ UavcanNode::init(uavcan::NodeID node_id, UAVCAN_DRIVER::BusEvent &bus_events)
 
 	// Actuators
 #if defined(CONFIG_UAVCAN_OUTPUTS_CONTROLLER)
-	ret = _esc_controller.init();
+	int32_t uavcan_enable = -1;
+	(void)param_get(param_find("UAVCAN_ENABLE"), &uavcan_enable);
 
-	if (ret < 0) {
-		return ret;
+	if (uavcan_enable > 2) {
+
+		ret = _esc_controller.init();
+
+		if (ret < 0) {
+			return ret;
+		}
 	}
 
 #endif
@@ -589,7 +596,7 @@ UavcanNode::init(uavcan::NodeID node_id, UAVCAN_DRIVER::BusEvent &bus_events)
 	}
 
 	// Sensor bridges
-	IUavcanSensorBridge::make_all(_node, _sensor_bridges);
+	IUavcanSensorBridge::make_all(_node, _sensor_bridges, &_node_info_publisher);
 
 	for (const auto &br : _sensor_bridges) {
 		ret = br->init();
@@ -602,14 +609,14 @@ UavcanNode::init(uavcan::NodeID node_id, UAVCAN_DRIVER::BusEvent &bus_events)
 		PX4_DEBUG("sensor bridge '%s' init ok", br->get_name());
 	}
 
+#if defined(CONFIG_UAVCAN_OUTPUTS_CONTROLLER)
+	_esc_controller.set_node_info_publisher(&_node_info_publisher);
+#endif
+
 	/* Set up shared service clients */
 	_param_getset_client.setCallback(GetSetCallback(this, &UavcanNode::cb_getset));
 	_param_opcode_client.setCallback(ExecuteOpcodeCallback(this, &UavcanNode::cb_opcode));
 	_param_restartnode_client.setCallback(RestartNodeCallback(this, &UavcanNode::cb_restart));
-
-
-	int32_t uavcan_enable = 1;
-	(void)param_get(param_find("UAVCAN_ENABLE"), &uavcan_enable);
 
 	if (uavcan_enable > 1) {
 		_servers = new UavcanServers(_node, _node_info_retriever);
@@ -1079,7 +1086,22 @@ void UavcanNode::publish_node_statuses()
 bool UavcanMixingInterfaceESC::updateOutputs(uint16_t outputs[MAX_ACTUATORS], unsigned num_outputs,
 		unsigned num_control_groups_updated)
 {
-	_esc_controller.update_outputs(outputs, num_outputs);
+	if (_esc_controller.initialized()) {
+		// num_outputs is the maximum possible number of outputs (8)
+		// output_array_size adapts to the highest output index that is mapped (4 for a quad)
+		// this allows for sending less CAN frames depending on what output indices are mapped
+		uint8_t output_array_size = 0;
+
+		for (int i = MAX_ACTUATORS - 1; i >= 0; i--) {
+			if (mixingOutput().isFunctionSet(i)) {
+				output_array_size = i + 1;
+				break;
+			}
+		}
+
+		_esc_controller.update_outputs(outputs, output_array_size);
+	}
+
 	return true;
 }
 
