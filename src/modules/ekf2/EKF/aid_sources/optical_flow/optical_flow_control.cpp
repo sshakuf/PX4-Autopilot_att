@@ -187,6 +187,25 @@ void Ekf::controlOpticalFlowFusion(const imuSample &imu_delayed)
 			}
 
 		} else {
+			// Log why optical flow can't start
+			if (!starting_conditions_passing) {
+				ECL_WARN("FLOW: Starting conditions FAIL - ctrl:%d tilt:%d within_dist:%d qual:%d mag:%d tilt_ok:%d counter:%d terrain_valid:%d horiz_aid:%d timeout:%d",
+					(int)_params.ekf2_of_ctrl,
+					(int)_control_status.flags.tilt_align,
+					(int)is_within_sensor_dist,
+					(int)is_quality_good,
+					(int)is_magnitude_good,
+					(int)is_tilt_good,
+					(int)_flow_counter,
+					(int)isTerrainEstimateValid(),
+					(int)isHorizontalAidingActive(),
+					(int)isTimedOut(_aid_src_optical_flow.time_last_fuse, (uint64_t)2e6));
+
+				// Show distance check details
+				ECL_WARN("FLOW: Distance check - hagl:%.2f min:%.2f max:%.2f",
+					(double)getHagl(), (double)_flow_min_distance, (double)_flow_max_distance);
+			}
+
 			if (starting_conditions_passing) {
 				// If the height is relative to the ground, terrain height cannot be observed.
 				_control_status.flags.opt_flow_terrain = (_height_sensor_ref != HeightSensor::RANGE);

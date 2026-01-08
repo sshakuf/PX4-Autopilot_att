@@ -473,7 +473,7 @@ void MulticopterPositionControl::Run() {
       static int control_enable_counter = 0;
       if (++control_enable_counter >= 50) {
         control_enable_counter = 0;
-        PX4_INFO("[POS_CTRL] Control ENABLED | Armed: %d | Offboard: %d",
+        POS_CTRL_INFO("[POS_CTRL] Control ENABLED | Armed: %d | Offboard: %d",
                  _vehicle_control_mode.flag_armed,
                  _vehicle_control_mode.flag_control_offboard_enabled);
       }
@@ -483,10 +483,10 @@ void MulticopterPositionControl::Run() {
       if ((_setpoint.timestamp < _time_position_control_enabled) &&
           (vehicle_local_position.timestamp_sample >
            _time_position_control_enabled)) {
-        PX4_INFO("[POS_CTRL] Generating FAILSAFE setpoint (no valid trajectory)");
+        POS_CTRL_INFO("[POS_CTRL] Generating FAILSAFE setpoint (no valid trajectory)");
         _setpoint = generateFailsafeSetpoint(
             vehicle_local_position.timestamp_sample, states, false);
-        PX4_INFO("[POS_CTRL] Failsafe SP: pos[%.2f,%.2f,%.2f] vel[%.2f,%.2f,%.2f]",
+        POS_CTRL_INFO("[POS_CTRL] Failsafe SP: pos[%.2f,%.2f,%.2f] vel[%.2f,%.2f,%.2f]",
                  (double)_setpoint.position[0], (double)_setpoint.position[1],
                  (double)_setpoint.position[2], (double)_setpoint.velocity[0],
                  (double)_setpoint.velocity[1], (double)_setpoint.velocity[2]);
@@ -506,7 +506,7 @@ void MulticopterPositionControl::Run() {
           static int hold_msg_counter = 0;
           if (++hold_msg_counter >= 100) {
             hold_msg_counter = 0;
-            PX4_INFO("[POS_CTRL] No valid position SP - holding at current pos[%.2f,%.2f,%.2f]",
+            POS_CTRL_INFO("[POS_CTRL] No valid position SP - holding at current pos[%.2f,%.2f,%.2f]",
                      (double)_setpoint.position[0], (double)_setpoint.position[1],
                      (double)_setpoint.position[2]);
           }
@@ -515,7 +515,7 @@ void MulticopterPositionControl::Run() {
         static int setpoint_counter = 0;
         if (++setpoint_counter >= 50) {
           setpoint_counter = 0;
-          PX4_INFO("[POS_CTRL] Using SP: pos[%.2f,%.2f,%.2f] vel[%.2f,%.2f,%.2f]",
+          POS_CTRL_INFO("[POS_CTRL] Using SP: pos[%.2f,%.2f,%.2f] vel[%.2f,%.2f,%.2f]",
                    (double)_setpoint.position[0], (double)_setpoint.position[1],
                    (double)_setpoint.position[2], (double)_setpoint.velocity[0],
                    (double)_setpoint.velocity[1], (double)_setpoint.velocity[2]);
@@ -525,7 +525,7 @@ void MulticopterPositionControl::Run() {
       static int control_disable_counter = 0;
       if (++control_disable_counter >= 100) {
         control_disable_counter = 0;
-        PX4_INFO("[POS_CTRL] Control DISABLED");
+        POS_CTRL_INFO("[POS_CTRL] Control DISABLED");
       }
     }
 
@@ -584,12 +584,12 @@ void MulticopterPositionControl::Run() {
       static int state_debug_counter = 0;
       if (++state_debug_counter >= 50) {
         state_debug_counter = 0;
-        PX4_INFO("[STATES] Pos[%.2f,%.2f,%.2f] Vel[%.2f,%.2f,%.2f] Valid:XY=%d,Z=%d,VXY=%d,VZ=%d",
+        POS_CTRL_INFO("[STATES] Pos[%.2f,%.2f,%.2f] Vel[%.2f,%.2f,%.2f] Valid:XY=%d,Z=%d,VXY=%d,VZ=%d",
                  (double)states.position(0), (double)states.position(1), (double)states.position(2),
                  (double)states.velocity(0), (double)states.velocity(1), (double)states.velocity(2),
                  vehicle_local_position.xy_valid, vehicle_local_position.z_valid,
                  vehicle_local_position.v_xy_valid, vehicle_local_position.v_z_valid);
-        PX4_INFO("[STATES] Acc[%.2f,%.2f,%.2f] Yaw:%.2f deg",
+        POS_CTRL_INFO("[STATES] Acc[%.2f,%.2f,%.2f] Yaw:%.2f deg",
                  (double)states.acceleration(0), (double)states.acceleration(1),
                  (double)states.acceleration(2), (double)math::degrees(states.yaw));
       }
@@ -611,7 +611,7 @@ void MulticopterPositionControl::Run() {
       static int pre_control_counter = 0;
       if (++pre_control_counter >= 50) {
         pre_control_counter = 0;
-        PX4_INFO("[PRE_CTRL] Setpoint Input - Pos SP[%.2f,%.2f] Vel SP[%.2f,%.2f] Acc SP[%.2f,%.2f]",
+        POS_CTRL_INFO("[PRE_CTRL] Setpoint Input - Pos SP[%.2f,%.2f] Vel SP[%.2f,%.2f] Acc SP[%.2f,%.2f]",
                  PX4_ISFINITE(_setpoint.position[0]) ? (double)_setpoint.position[0] : (double)NAN,
                  PX4_ISFINITE(_setpoint.position[1]) ? (double)_setpoint.position[1] : (double)NAN,
                  PX4_ISFINITE(_setpoint.velocity[0]) ? (double)_setpoint.velocity[0] : (double)NAN,
@@ -630,9 +630,9 @@ void MulticopterPositionControl::Run() {
       if (++control_update_counter >= 50) {
         control_update_counter = 0;
         if (control_success) {
-          PX4_INFO("[CTRL_UPDATE] SUCCESS | dt: %.4f", (double)dt);
+          POS_CTRL_INFO("[CTRL_UPDATE] SUCCESS | dt: %.4f", (double)dt);
         } else {
-          PX4_WARN("[CTRL_UPDATE] FAILED | dt: %.4f | Trying fallback...", (double)dt);
+          POS_CTRL_WARN("[CTRL_UPDATE] FAILED | dt: %.4f | Trying fallback...", (double)dt);
         }
       }
 
@@ -646,13 +646,13 @@ void MulticopterPositionControl::Run() {
           post_control_counter = 0;
           Vector3f thrust_sp;
           _control.getThrustSetpoint(thrust_sp);
-          PX4_INFO("[POST_CTRL] Thrust SP (NED): [%.3f,%.3f,%.3f]",
+          POS_CTRL_INFO("[POST_CTRL] Thrust SP (NED): [%.3f,%.3f,%.3f]",
                    (double)thrust_sp(0), (double)thrust_sp(1), (double)thrust_sp(2));
 
           // Log the local position setpoint which contains velocity and acceleration info
           vehicle_local_position_setpoint_s local_sp_debug{};
           _control.getLocalPositionSetpoint(local_sp_debug);
-          PX4_INFO("[POST_CTRL] Local SP - Vel[%.3f,%.3f,%.3f] Acc[%.3f,%.3f,%.3f]",
+          POS_CTRL_INFO("[POST_CTRL] Local SP - Vel[%.3f,%.3f,%.3f] Acc[%.3f,%.3f,%.3f]",
                    (double)local_sp_debug.vx, (double)local_sp_debug.vy, (double)local_sp_debug.vz,
                    (double)local_sp_debug.acceleration[0], (double)local_sp_debug.acceleration[1],
                    (double)local_sp_debug.acceleration[2]);
@@ -660,7 +660,7 @@ void MulticopterPositionControl::Run() {
       } else {
         // Initial update failed - Try fallback if within timeout
         if (now < _last_valid_setpoint.timestamp + 200_ms) {
-          PX4_WARN("[CTRL_UPDATE] Using last valid setpoint as fallback");
+          POS_CTRL_WARN("[CTRL_UPDATE] Using last valid setpoint as fallback");
           // Use last valid setpoint
           adjustSetpointForEKFResets(vehicle_local_position,
                                      _last_valid_setpoint);
@@ -669,7 +669,7 @@ void MulticopterPositionControl::Run() {
 
         // Still failing / not within timeout - Go to failsafe
         if (!_control.update(dt)) {
-          PX4_WARN("[CTRL_UPDATE] Failsafe triggered - control update failed");
+          POS_CTRL_WARN("[CTRL_UPDATE] Failsafe triggered - control update failed");
 
           _vehicle_constraints = {0, NAN, NAN, false, {}}; // reset constraints
 
@@ -716,7 +716,7 @@ void MulticopterPositionControl::Run() {
       static int thrust_transform_counter = 0;
       if (++thrust_transform_counter >= 50) {
         thrust_transform_counter = 0;
-        PX4_INFO("[THRUST_TRANS] NED[%.3f,%.3f,%.3f] -> Body[%.3f,%.3f,0] | Yaw:%.1f deg",
+        POS_CTRL_INFO("[THRUST_TRANS] NED[%.3f,%.3f,%.3f] -> Body[%.3f,%.3f,0] | Yaw:%.1f deg",
                  (double)thrust_sp_ned(0), (double)thrust_sp_ned(1), (double)thrust_sp_ned(2),
                  (double)thrust_body_x, (double)thrust_body_y, (double)math::degrees(yaw));
       }

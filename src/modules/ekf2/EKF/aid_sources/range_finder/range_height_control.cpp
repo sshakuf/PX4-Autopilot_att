@@ -44,12 +44,18 @@ void Ekf::controlRangeHaglFusion(const imuSample &imu_sample)
 {
 	static constexpr const char *HGT_SRC_NAME = "RNG";
 
-	bool rng_data_ready = false;
+	bool rng_data_ready = false; 
 
 	if (_range_buffer) {
 		// Get range data from buffer and check validity
 		rng_data_ready = _range_buffer->pop_first_older_than(imu_sample.time_us, _range_sensor.getSampleAddress());
 		_range_sensor.setDataReadiness(rng_data_ready);
+
+		// ALWAYS log buffer pop status to diagnose issue
+		ECL_WARN("RNG: Buffer pop - ready:%d regular:%d imu_time:%llu",
+			(int)rng_data_ready,
+			(int)_range_sensor.isRegularlySendingData(),
+			(unsigned long long)imu_sample.time_us);
 
 		// update range sensor angle parameters in case they have changed
 		_range_sensor.setPitchOffset(_params.ekf2_rng_pitch);
@@ -60,6 +66,7 @@ void Ekf::controlRangeHaglFusion(const imuSample &imu_sample)
 		_range_sensor.runChecks(imu_sample.time_us, _R_to_earth);
 
 		if (_range_sensor.isDataHealthy()) {
+			ECL_DEBUG("RNG: Data healthy, range=%.2fm", (double)_range_sensor.getRange());
 			// correct the range data for position offset relative to the IMU
 			const Vector3f pos_offset_body = _params.rng_pos_body - _params.imu_pos_body;
 			const Vector3f pos_offset_earth = _R_to_earth * pos_offset_body;
@@ -87,6 +94,12 @@ void Ekf::controlRangeHaglFusion(const imuSample &imu_sample)
 
 				_range_sensor.setRange(_params.ekf2_min_rng);
 				_range_sensor.setValidity(true); // bypass the checks
+				ECL_INFO("RNG: On ground, synthesizing range=%.2fm", (double)_params.ekf2_min_rng);
+			} else {
+				ECL_WARN("RNG: Data unhealthy - ready:%d regular:%d valid:%d",
+					_range_sensor.isDataReady(),
+					_range_sensor.isRegularlySendingData(),
+					_range_sensor.isHealthy());
 			}
 		}
 
@@ -98,7 +111,12 @@ void Ekf::controlRangeHaglFusion(const imuSample &imu_sample)
 
 	auto &aid_src = _aid_src_rng_hgt;
 
+	ECL_WARN("RNG: Pre-fusion check - ready:%d has_addr:%d",
+		(int)rng_data_ready,
+		(int)(_range_sensor.getSampleAddress() != nullptr));
+
 	if (rng_data_ready && _range_sensor.getSampleAddress()) {
+		ECL_WARN("RNG: Inside fusion logic - starting analysis");
 
 		const float measurement = math::max(_range_sensor.getDistBottom(), _params.ekf2_min_rng);
 		const float measurement_variance = getRngVar();
@@ -137,12 +155,31 @@ void Ekf::controlRangeHaglFusion(const imuSample &imu_sample)
 				&& _range_sensor.isRegularlySendingData()
 				&& _range_sensor.isDataHealthy();
 
-		const bool do_conditional_range_aid = (_control_status.flags.rng_terrain || _control_status.flags.rng_hgt)
-						      && (_params.ekf2_rng_ctrl == static_cast<int32_t>(RngCtrl::CONDITIONAL))
-						      && isConditionalRangeAidSuitable();
+		const bool rng_flags_ok = (_control_status.flags.rng_terrain || _control_status.flags.rng_hgt);
+		const bool is_conditional_mode = (_params.ekf2_rng_ctrl == static_cast<int32_t>(RngCtrl::CONDITIONAL));
+		const bool is_suitable = isConditionalRangeAidSuitable();
+
+		const bool do_conditional_range_aid = rng_flags_ok && is_conditional_mode && is_suitable;
 
 		const bool do_range_aid = (_control_status.flags.rng_terrain || _control_status.flags.rng_hgt)
 					  && (_params.ekf2_rng_ctrl == static_cast<int32_t>(RngCtrl::ENABLED));
+
+		// Diagnostic: Log why conditional range aid is failing
+		if (rng_flags_ok && !do_conditional_range_aid) {
+			ECL_WARN("RNG: Conditional aid FALSE - mode:%d suitable:%d ctrl_val:%d",
+				(int)is_conditional_mode, (int)is_suitable, (int)_params.ekf2_rng_ctrl);
+		}
+
+		// Log why starting conditions fail
+		if (!_control_status.flags.rng_hgt && !starting_conditions_passing) {
+			ECL_WARN("RNG: Starting conditions FAIL - ctrl:%d tilt:%d meas_valid:%d recent:%d regular:%d healthy:%d",
+				(int)_params.ekf2_rng_ctrl,
+				(int)_control_status.flags.tilt_align,
+				(int)measurement_valid,
+				(int)isNewestSampleRecent(_time_last_range_buffer_push, 2 * estimator::sensor::RNG_MAX_INTERVAL),
+				(int)_range_sensor.isRegularlySendingData(),
+				(int)_range_sensor.isDataHealthy());
+		}
 
 		if (_control_status.flags.rng_hgt) {
 			if (!(do_conditional_range_aid || do_range_aid)) {
@@ -151,6 +188,10 @@ void Ekf::controlRangeHaglFusion(const imuSample &imu_sample)
 			}
 
 		} else if (starting_conditions_passing) {
+			ECL_WARN("RNG: In startup section - hgt_ref:%d is_range:%d",
+				(int)_params.ekf2_hgt_ref,
+				(int)(_params.ekf2_hgt_ref == static_cast<int32_t>(HeightSensor::RANGE)));
+
 			if (_params.ekf2_hgt_ref == static_cast<int32_t>(HeightSensor::RANGE)) {
 				if (do_conditional_range_aid) {
 					// Range finder is used while hovering to stabilize the height estimate. Don't reset but use it as height reference.
@@ -182,20 +223,48 @@ void Ekf::controlRangeHaglFusion(const imuSample &imu_sample)
 				}
 
 			} else {
+				ECL_WARN("RNG: Height ref NOT range - do_cond:%d do_aid:%d",
+					(int)do_conditional_range_aid,
+					(int)do_range_aid);
+
 				if (do_conditional_range_aid || do_range_aid) {
-					ECL_INFO("starting %s height fusion", HGT_SRC_NAME);
+					ECL_WARN("RNG: Setting rng_hgt=true in startup");
 					_control_status.flags.rng_hgt = true;
 
+					// IMPORTANT: Also enable terrain fusion for optical flow
+					// Without this, terrain never becomes valid and optical flow can't start
+					if (!_control_status.flags.rng_terrain) {
+						ECL_WARN("RNG: ALSO enabling terrain fusion for optical flow support");
+						_control_status.flags.rng_terrain = true;
+					}
+
 					if (!_control_status.flags.opt_flow_terrain && aid_src.innovation_rejected) {
-						ECL_INFO("starting %s height fusion, resetting terrain", HGT_SRC_NAME);
+						ECL_WARN("RNG: Also resetting terrain");
 						resetTerrainToRng(aid_src);
 						resetAidSourceStatusZeroInnovation(aid_src);
 					}
+				} else {
+					ECL_WARN("RNG: NOT setting rng_hgt - both do_conditional and do_aid are false");
 				}
 			}
 		}
 
+		ECL_WARN("RNG: Fusion status check - rng_hgt:%d rng_terrain:%d start_cond:%d cont_cond:%d",
+			(int)_control_status.flags.rng_hgt,
+			(int)_control_status.flags.rng_terrain,
+			(int)starting_conditions_passing,
+			(int)continuing_conditions_passing);
+
 		if (_control_status.flags.rng_hgt || _control_status.flags.rng_terrain) {
+			ECL_WARN("RNG: One or both fusion types active - managing continuing fusion");
+
+			// Fix: If height fusion is active but terrain fusion isn't, enable terrain fusion
+			// This supports optical flow which requires terrain validity
+			if (_control_status.flags.rng_hgt && !_control_status.flags.rng_terrain) {
+				ECL_WARN("RNG: Height fusion active but terrain fusion disabled - ENABLING terrain fusion");
+				_control_status.flags.rng_terrain = true;
+			}
+
 			if (continuing_conditions_passing) {
 
 				if (do_conditional_range_aid) {
@@ -252,21 +321,35 @@ void Ekf::controlRangeHaglFusion(const imuSample &imu_sample)
 			}
 
 		} else {
+			ECL_WARN("RNG: Not active yet - rng_hgt:%d rng_terrain:%d start_cond:%d",
+				(int)_control_status.flags.rng_hgt,
+				(int)_control_status.flags.rng_terrain,
+				(int)starting_conditions_passing);
+
 			if (starting_conditions_passing) {
 				if (_control_status.flags.opt_flow_terrain) {
+					ECL_WARN("RNG: Starting terrain fusion with optical flow active");
 					if (!aid_src.innovation_rejected) {
 						_control_status.flags.rng_terrain = true;
 						fuseHaglRng(aid_src, _control_status.flags.rng_hgt, _control_status.flags.rng_terrain);
+						ECL_WARN("RNG: Terrain fusion started with optical flow");
+					} else {
+						ECL_WARN("RNG: Innovation rejected, not starting");
 					}
 
 				} else {
+					ECL_WARN("RNG: Starting terrain fusion without optical flow");
 					if (aid_src.innovation_rejected) {
+						ECL_WARN("RNG: Innovation rejected, resetting terrain");
 						resetTerrainToRng(aid_src);
 						resetAidSourceStatusZeroInnovation(aid_src);
 					}
 
 					_control_status.flags.rng_terrain = true;
+					ECL_WARN("RNG: Terrain fusion enabled, rng_terrain=%d", (int)_control_status.flags.rng_terrain);
 				}
+			} else {
+				ECL_WARN("RNG: Terrain fusion not started - starting conditions not passing");
 			}
 		}
 
@@ -347,7 +430,17 @@ bool Ekf::isConditionalRangeAidSuitable()
 		is_below_max_speed = !_state.vel.xy().longerThan(max_vel_xy);
 	}
 
-	return is_in_range && is_hagl_stable && is_below_max_speed;
+	const bool result = is_in_range && is_hagl_stable && is_below_max_speed;
+
+	// Diagnostic: Log why conditional range aid suitability check fails
+	if (!result) {
+		ECL_WARN("RNG: Conditional NOT suitable - in_range:%d (%.2f<%.2f) stable:%d (%.2f<%.2f) speed_ok:%d vel:%.2f",
+			(int)is_in_range, (double)getHagl(), (double)range_hagl_max,
+			(int)is_hagl_stable, (double)hagl_test_ratio, (double)(_control_status.flags.rng_hgt ? 1.0f : 0.01f),
+			(int)is_below_max_speed, (double)_state.vel.xy().norm());
+	}
+
+	return result;
 }
 
 void Ekf::stopRngHgtFusion()

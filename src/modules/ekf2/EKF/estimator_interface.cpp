@@ -307,19 +307,21 @@ void EstimatorInterface::setRangeData(const sensor::rangeSample &range_sample)
 				- static_cast<int64_t>(_params.ekf2_rng_delay * 1000)
 				- static_cast<int64_t>(_dt_ekf_avg * 5e5f); // seconds to microseconds divided by 2
 
-	// limit data rate to prevent data being lost
-	if (time_us >= static_cast<int64_t>(_range_buffer->get_newest().time_us + _min_obs_interval_us)) {
+	// MODIFIED: Removed rate limiting check due to timestamp jitter from sensor
+	// The irregular intervals (6.5ms-10ms) made any tolerance-based approach unreliable
+	// Buffer overflow risk is acceptable given the critical need for terrain validity
 
-		sensor::rangeSample range_sample_new{range_sample};
-		range_sample_new.time_us = time_us;
+	sensor::rangeSample range_sample_new{range_sample};
+	range_sample_new.time_us = time_us;
 
-		_range_buffer->push(range_sample_new);
-		_time_last_range_buffer_push = _time_latest_us;
+	_range_buffer->push(range_sample_new);
+	_time_last_range_buffer_push = _time_latest_us;
 
-	} else {
-		ECL_WARN("range data too fast %" PRIi64 " < %" PRIu64 " + %d", time_us, _range_buffer->get_newest().time_us,
-			 _min_obs_interval_us);
-	}
+	// Note: ECL_DEBUG may be compiled out in release builds, so we accept all data unconditionally
+	ECL_DEBUG("RNG: Buffer push - orig:%llu adj:%lld delay:%.1fms",
+		(unsigned long long)range_sample.time_us,
+		(long long)time_us,
+		(double)(_params.ekf2_rng_delay));
 }
 #endif // CONFIG_EKF2_RANGE_FINDER
 

@@ -1,0 +1,4 @@
+#!/bin/bash
+# Build script for MicoAir H743-v2 target
+
+make micoair_h743-v2_default

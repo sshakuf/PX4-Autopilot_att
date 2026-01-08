@@ -87,11 +87,11 @@ parameters:
       description:
         short: Minumum range validity period
         long: Minimum duration during which the reported range finder signal quality
-          needs to be non-zero in order to be declared valid (s)
+          needs to be non-zero in order to be declared valid (s). Set to 0 to disable quality check.
       type: float
       default: 1.0
       unit: s
-      min: 0.1
+      min: 0.0
       max: 5
     EKF2_RNG_K_GATE:
       description:

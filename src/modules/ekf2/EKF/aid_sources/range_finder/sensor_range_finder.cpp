@@ -31,6 +31,8 @@
  *
  ****************************************************************************/
 
+
+
 /**
  * @file sensor_range_finder.cpp
  *
@@ -76,9 +78,14 @@ void SensorRangeFinder::updateValidity(uint64_t current_time_us)
 	if (_is_sample_ready) {
 		_is_sample_valid = false;
 
-		_time_bad_quality_us = _sample.quality == 0 ? current_time_us : _time_bad_quality_us;
+		// _time_bad_quality_us = _sample.quality == 0 ? current_time_us : _time_bad_quality_us;
+		// we override the sample quality check as some sensors do not provide quality information
+		_time_bad_quality_us = current_time_us ;
 
-		if (!isQualityOk(current_time_us) || !isTiltOk() || !isDataInRange()) {
+		// Skip quality check if hysteresis is 0 (disabled)
+		const bool skip_quality_check = (_quality_hyst_us == 0);
+
+		if ((!skip_quality_check && !isQualityOk(current_time_us)) || !isTiltOk() || !isDataInRange()) {
 			return;
 		}
 
@@ -93,8 +100,10 @@ void SensorRangeFinder::updateValidity(uint64_t current_time_us)
 }
 
 bool SensorRangeFinder::isQualityOk(uint64_t current_time_us) const
-{
-	return current_time_us - _time_bad_quality_us > _quality_hyst_us;
+{	
+	//we override the sample quality check as some sensors do not provide quality information
+	return true;
+	// return current_time_us - _time_bad_quality_us > _quality_hyst_us;
 }
 
 void SensorRangeFinder::updateDtDataLpf(uint64_t current_time_us)

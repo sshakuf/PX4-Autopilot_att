@@ -37,6 +37,18 @@
 
 #pragma once
 
+// Enable/disable detailed position control debug logging
+// Set to 1 to enable, 0 to disable
+#define POS_CTRL_DEBUG_LOG 0
+
+#if POS_CTRL_DEBUG_LOG
+# define POS_CTRL_INFO(fmt, ...) PX4_INFO(fmt, ##__VA_ARGS__)
+# define POS_CTRL_WARN(fmt, ...) PX4_WARN(fmt, ##__VA_ARGS__)
+#else
+# define POS_CTRL_INFO(fmt, ...) do {} while(0)
+# define POS_CTRL_WARN(fmt, ...) do {} while(0)
+#endif
+
 #include "PositionControl/PositionControl.hpp"
 #include "GotoControl/GotoControl.hpp"
 

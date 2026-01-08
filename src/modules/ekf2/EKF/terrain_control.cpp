@@ -124,11 +124,22 @@ void Ekf::updateTerrainValidity()
 		    && (valid_rng_terrain
 			|| (valid_opt_flow_terrain && small_relative_hagl_var))
 		   ) {
+			ECL_INFO("TERRAIN: Now VALID - rng:%d flow:%d hagl:%.2f",
+				(int)valid_rng_terrain, (int)valid_opt_flow_terrain, (double)getHagl());
 			_terrain_valid = true;
+		} else {
+			ECL_WARN("TERRAIN: Still INVALID - rng:%d flow:%d pos_hagl:%d pos_var:%d small_var:%d hagl:%.2f",
+				(int)valid_rng_terrain, (int)valid_opt_flow_terrain,
+				(int)positive_hagl, (int)positive_hagl_var, (int)small_relative_hagl_var, (double)getHagl());
 		}
 
 	} else {
 		// terrain was previously valid, continue considering valid if variance is good
-		_terrain_valid = positive_hagl && positive_hagl_var && small_relative_hagl_var;
+		bool new_valid = positive_hagl && positive_hagl_var && small_relative_hagl_var;
+		if (!new_valid && _terrain_valid) {
+			ECL_WARN("TERRAIN: Became INVALID - pos_hagl:%d pos_var:%d small_var:%d",
+				(int)positive_hagl, (int)positive_hagl_var, (int)small_relative_hagl_var);
+		}
+		_terrain_valid = new_valid;
 	}
 }

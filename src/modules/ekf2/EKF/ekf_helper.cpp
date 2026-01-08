@@ -894,6 +894,15 @@ void Ekf::updateHorizontalDeadReckoningstatus()
 
 	}
 
+	// Log when dead reckoning status changes
+	if (inertial_dead_reckoning != _control_status.flags.inertial_dead_reckoning) {
+		if (inertial_dead_reckoning) {
+			ECL_WARN("DEADRECKON: Now TRUE - no horizontal aiding active");
+		} else {
+			ECL_INFO("DEADRECKON: Now FALSE - horizontal aiding restored");
+		}
+	}
+
 	_control_status.flags.inertial_dead_reckoning = inertial_dead_reckoning;
 }
 
