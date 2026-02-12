@@ -316,6 +316,10 @@ void MulticopterPositionControl::parameters_update(bool force) {
       _hover_thrust_initialized = true;
     }
 
+    // Set keep heading parameters
+    _control.setKeepHeading(_param_df_keep_hdg_en.get(),
+                            _param_df_keep_hdg.get());
+
     // initialize vectors from params and enforce constraints
   }
 }

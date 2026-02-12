@@ -66,7 +66,7 @@ void Ekf::controlRangeHaglFusion(const imuSample &imu_sample)
 		_range_sensor.runChecks(imu_sample.time_us, _R_to_earth);
 
 		if (_range_sensor.isDataHealthy()) {
-			ECL_DEBUG("RNG: Data healthy, range=%.2fm", (double)_range_sensor.getRange());
+			ECL_WARN("RNG: Data healthy, range=%.2fm", (double)_range_sensor.getRange());
 			// correct the range data for position offset relative to the IMU
 			const Vector3f pos_offset_body = _params.rng_pos_body - _params.imu_pos_body;
 			const Vector3f pos_offset_earth = _R_to_earth * pos_offset_body;

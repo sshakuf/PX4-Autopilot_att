@@ -134,6 +134,13 @@ public:
 	void updateHoverThrust(const float hover_thrust_new);
 
 	/**
+	 * Set keep heading parameters
+	 * @param enable Enable/disable keep heading feature
+	 * @param heading_deg Target heading in degrees (0-360, 0=North)
+	 */
+	void setKeepHeading(bool enable, float heading_deg);
+
+	/**
 	 * Pass the current vehicle state to the controller
 	 * @param PositionControlStates structure
 	 */
@@ -245,4 +252,8 @@ private:
 	matrix::Vector3f _thr_sp; /**< desired thrust */
 	float _yaw_sp{}; /**< desired heading */
 	float _yawspeed_sp{}; /** desired yaw-speed */
+
+	// Keep heading feature
+	bool _keep_heading_enabled{false}; /**< enable keep heading feature */
+	float _keep_heading_target{0.0f}; /**< target heading in radians */
 };

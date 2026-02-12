@@ -82,6 +82,13 @@ void PositionControl::updateHoverThrust(const float hover_thrust_new) {
   setHoverThrust(hover_thrust_new);
 }
 
+void PositionControl::setKeepHeading(bool enable, float heading_deg) {
+  _keep_heading_enabled = enable;
+  // Convert degrees to radians and normalize to [-pi, pi]
+  _keep_heading_target = math::radians(heading_deg);
+  _keep_heading_target = wrap_pi(_keep_heading_target);
+}
+
 void PositionControl::setState(const PositionControlStates &states) {
   _pos = states.position;
   _vel = states.velocity;
@@ -104,10 +111,16 @@ bool PositionControl::update(const float dt) {
     _positionControl();
     _velocityControl(dt);
 
-    _yawspeed_sp = PX4_ISFINITE(_yawspeed_sp) ? _yawspeed_sp : 0.f;
-    _yaw_sp = PX4_ISFINITE(_yaw_sp)
-                  ? _yaw_sp
-                  : _yaw; // TODO: better way to disable yaw control
+    // Apply keep heading override if enabled
+    if (_keep_heading_enabled) {
+      _yaw_sp = _keep_heading_target;
+      _yawspeed_sp = 0.0f; // No yaw rate when holding heading
+    } else {
+      _yawspeed_sp = PX4_ISFINITE(_yawspeed_sp) ? _yawspeed_sp : 0.f;
+      _yaw_sp = PX4_ISFINITE(_yaw_sp)
+                    ? _yaw_sp
+                    : _yaw; // TODO: better way to disable yaw control
+    }
   }
 
   // There has to be a valid output acceleration and thrust setpoint otherwise
