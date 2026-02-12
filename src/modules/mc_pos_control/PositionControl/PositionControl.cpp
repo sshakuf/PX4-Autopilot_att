@@ -114,7 +114,21 @@ bool PositionControl::update(const float dt) {
     // Apply keep heading override if enabled
     if (_keep_heading_enabled) {
       _yaw_sp = _keep_heading_target;
-      _yawspeed_sp = 0.0f; // No yaw rate when holding heading
+
+      // Calculate heading error (wrap to [-pi, pi])
+      float heading_error = _keep_heading_target - _yaw;
+      heading_error = wrap_pi(heading_error);
+
+      // Proportional controller for yaw rate
+      // You can adjust this gain (currently 1.0) for faster/slower response
+      // Higher values = faster rotation, lower values = slower rotation
+      const float yaw_p_gain = 1.0f;
+      _yawspeed_sp = yaw_p_gain * heading_error;
+
+      // Limit yaw rate to prevent excessive rotation speed
+      // This should match your MPC_YAWRAUTO_MAX parameter (typically around 45 deg/s = 0.785 rad/s)
+      const float max_yaw_rate = math::radians(45.0f);
+      _yawspeed_sp = math::constrain(_yawspeed_sp, -max_yaw_rate, max_yaw_rate);
     } else {
       _yawspeed_sp = PX4_ISFINITE(_yawspeed_sp) ? _yawspeed_sp : 0.f;
       _yaw_sp = PX4_ISFINITE(_yaw_sp)

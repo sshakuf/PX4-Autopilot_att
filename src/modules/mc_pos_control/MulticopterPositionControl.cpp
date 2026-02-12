@@ -317,8 +317,8 @@ void MulticopterPositionControl::parameters_update(bool force) {
     }
 
     // Set keep heading parameters
-    _control.setKeepHeading(_param_df_keep_hdg_en.get(),
-                            _param_df_keep_hdg.get());
+    _control.setKeepHeading(_param_df_yaw_hold_en.get(),
+                            _param_df_yaw_hold.get());
 
     // initialize vectors from params and enforce constraints
   }

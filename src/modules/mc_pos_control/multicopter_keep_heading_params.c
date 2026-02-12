@@ -35,20 +35,22 @@
  * Enable keep heading feature
  *
  * When enabled, the position controller will maintain the heading
- * specified by DF_KEEP_HDG parameter instead of following
+ * specified by DF_YAW_HOLD parameter instead of following
  * trajectory setpoint yaw commands.
  *
- * @boolean
+ * @min 0
+ * @max 1
+ * @value 0 Disabled
+ * @value 1 Enabled
  * @group Multicopter Position Control
- * @reboot_required false
  */
-PARAM_DEFINE_INT32(DF_KEEP_HDG_EN, 0);
+PARAM_DEFINE_INT32(DF_YAW_HOLD_EN, 0);
 
 /**
  * Keep heading target angle
  *
  * Target heading in degrees (0-360) where 0 is North.
- * This heading will be maintained when DF_KEEP_HDG_EN is enabled.
+ * This heading will be maintained when DF_YAW_HOLD_EN is enabled.
  *
  * @unit deg
  * @min 0.0
@@ -56,6 +58,5 @@ PARAM_DEFINE_INT32(DF_KEEP_HDG_EN, 0);
  * @decimal 1
  * @increment 1.0
  * @group Multicopter Position Control
- * @reboot_required false
  */
-PARAM_DEFINE_FLOAT(DF_KEEP_HDG, 0.0f);
+PARAM_DEFINE_FLOAT(DF_YAW_HOLD, 0.0f);

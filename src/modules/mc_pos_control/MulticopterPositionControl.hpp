@@ -197,8 +197,8 @@ private:
 		(ParamFloat<px4::params::MPC_YAWRAUTO_ACC>) _param_mpc_yawrauto_acc,
 
 		// Keep heading parameters
-		(ParamInt<px4::params::DF_KEEP_HDG_EN>) _param_df_keep_hdg_en,
-		(ParamFloat<px4::params::DF_KEEP_HDG>) _param_df_keep_hdg
+		(ParamInt<px4::params::DF_YAW_HOLD_EN>) _param_df_yaw_hold_en,
+		(ParamFloat<px4::params::DF_YAW_HOLD>) _param_df_yaw_hold
 	);
 
 	math::WelfordMean<float> _sample_interval_s{};
