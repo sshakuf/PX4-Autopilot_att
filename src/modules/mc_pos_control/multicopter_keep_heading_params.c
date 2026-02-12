@@ -49,7 +49,8 @@ PARAM_DEFINE_INT32(DF_YAW_HOLD_EN, 0);
 /**
  * Keep heading target angle
  *
- * Target heading in degrees (0-360) where 0 is North.
+ * Target heading in degrees using NED (North-East-Down) coordinates.
+ * 0° = True North, 90° = East, 180° = South, 270° = West.
  * This heading will be maintained when DF_YAW_HOLD_EN is enabled.
  *
  * @unit deg

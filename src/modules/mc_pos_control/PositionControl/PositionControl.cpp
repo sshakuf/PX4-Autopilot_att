@@ -85,6 +85,7 @@ void PositionControl::updateHoverThrust(const float hover_thrust_new) {
 void PositionControl::setKeepHeading(bool enable, float heading_deg) {
   _keep_heading_enabled = enable;
   // Convert degrees to radians and normalize to [-pi, pi]
+  // Heading is in NED coordinates: 0° = North, 90° = East, 180° = South, -90°/270° = West
   _keep_heading_target = math::radians(heading_deg);
   _keep_heading_target = wrap_pi(_keep_heading_target);
 }
