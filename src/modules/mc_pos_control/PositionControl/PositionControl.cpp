@@ -120,15 +120,25 @@ bool PositionControl::update(const float dt) {
       float heading_error = _keep_heading_target - _yaw;
       heading_error = wrap_pi(heading_error);
 
-      // Proportional controller for yaw rate
-      // You can adjust this gain (currently 1.0) for faster/slower response
-      // Higher values = faster rotation, lower values = slower rotation
-      const float yaw_p_gain = 1.0f;
+      // Proportional controller for yaw rate with minimum rate for final approach
+      // Increased gain for faster response and better precision
+      const float yaw_p_gain = 3.0f;  // Increased from 1.0 for faster rotation
       _yawspeed_sp = yaw_p_gain * heading_error;
 
+      // Apply minimum yaw rate when close to target to overcome friction/deadband
+      // This ensures the drone continues rotating even with small errors
+      const float min_yaw_rate = math::radians(5.0f);  // 5 deg/s minimum
+      const float error_threshold = math::radians(10.0f);  // Apply min rate within 10 degrees
+
+      if (fabsf(heading_error) > math::radians(1.0f) && fabsf(heading_error) < error_threshold) {
+        // Close to target but not there yet - apply minimum rate
+        if (fabsf(_yawspeed_sp) < min_yaw_rate) {
+          _yawspeed_sp = (heading_error > 0.0f) ? min_yaw_rate : -min_yaw_rate;
+        }
+      }
+
       // Limit yaw rate to prevent excessive rotation speed
-      // This should match your MPC_YAWRAUTO_MAX parameter (typically around 45 deg/s = 0.785 rad/s)
-      const float max_yaw_rate = math::radians(45.0f);
+      const float max_yaw_rate = math::radians(90.0f);  // Increased to 90 deg/s for faster rotation
       _yawspeed_sp = math::constrain(_yawspeed_sp, -max_yaw_rate, max_yaw_rate);
     } else {
       _yawspeed_sp = PX4_ISFINITE(_yawspeed_sp) ? _yawspeed_sp : 0.f;
