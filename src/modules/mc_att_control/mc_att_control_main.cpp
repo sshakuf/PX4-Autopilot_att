@@ -197,6 +197,29 @@ MulticopterAttitudeControl::generate_attitude_setpoint(const Quatf &q, float dt)
 
 	attitude_setpoint.thrust_body[2] = -throttle_curve(_manual_control_setpoint.throttle);
 
+	// Debug logging for manual control and attitude setpoint (every 50 cycles = ~0.5sec)
+	static int manual_att_counter = 0;
+	if (++manual_att_counter >= 50) {
+		manual_att_counter = 0;
+		// Convert quaternions to Euler angles for readability
+		matrix::Eulerf euler_current(q);
+		matrix::Eulerf euler_sp(q_sp);
+		PX4_INFO("[MANUAL_IN] roll:%.3f pitch:%.3f yaw:%.3f throttle:%.3f",
+			 (double)_manual_control_setpoint.roll,
+			 (double)_manual_control_setpoint.pitch,
+			 (double)_manual_control_setpoint.yaw,
+			 (double)_manual_control_setpoint.throttle);
+		PX4_INFO("[ATT_CURRENT] roll:%.1f° pitch:%.1f° yaw:%.1f°",
+			 (double)math::degrees(euler_current.phi()),
+			 (double)math::degrees(euler_current.theta()),
+			 (double)math::degrees(euler_current.psi()));
+		PX4_INFO("[ATT_SP] roll:%.1f° pitch:%.1f° yaw:%.1f° thrust_z:%.3f",
+			 (double)math::degrees(euler_sp.phi()),
+			 (double)math::degrees(euler_sp.theta()),
+			 (double)math::degrees(euler_sp.psi()),
+			 (double)attitude_setpoint.thrust_body[2]);
+	}
+
 	attitude_setpoint.timestamp = hrt_absolute_time();
 	_vehicle_attitude_setpoint_pub.publish(attitude_setpoint);
 }
@@ -221,6 +244,115 @@ MulticopterAttitudeControl::Run()
 		updateParams();
 		parameters_updated();
 	}
+
+	// Increment loop counter for periodic logging
+	_loop_counter++;
+
+	// ============================================================
+	// DIRECT FLIGHT CONTROL MODE - Bypass ALL controllers
+	// ============================================================
+	// CRITICAL: This MUST be checked BEFORE normal control chain to prevent interference
+	if (_param_df_mc_dir_en.get()) {
+
+		// Update manual control setpoint and vehicle control mode
+		_manual_control_setpoint_sub.update(&_manual_control_setpoint);
+		_vehicle_control_mode_sub.update(&_vehicle_control_mode);
+
+		// Only run in manual mode (no position/altitude hold interference)
+		if (_vehicle_control_mode.flag_control_manual_enabled &&
+		    !_vehicle_control_mode.flag_control_altitude_enabled &&
+		    !_vehicle_control_mode.flag_control_velocity_enabled &&
+		    !_vehicle_control_mode.flag_control_position_enabled) {
+
+			// Check if we have valid manual input
+			if (_manual_control_setpoint.timestamp != 0 &&
+			    hrt_elapsed_time(&_manual_control_setpoint.timestamp) < 100_ms) {
+
+				// ============================================================
+				// HORIZONTAL DRONE MAPPING - DIRECT 1:1 CONTROL
+				// ============================================================
+				// Standard multicopter effectiveness: torque (roll, pitch, yaw)
+				// maps strongly to motors; thrust X/Y are zero for upward rotors.
+				// Use TORQUE for all axes so roll/pitch get same response as yaw.
+				// ============================================================
+
+				vehicle_torque_setpoint_s v_torque_sp{};
+				vehicle_thrust_setpoint_s v_thrust_sp{};
+
+				// Roll stick → roll torque (same allocation path as yaw)
+				v_torque_sp.xyz[0] = _manual_control_setpoint.roll * _param_df_mc_dir_rp.get();
+
+				// Pitch stick → pitch torque (same allocation path as yaw)
+				v_torque_sp.xyz[1] = _manual_control_setpoint.pitch * _param_df_mc_dir_rp.get();
+
+				// Yaw stick → yaw torque
+				v_torque_sp.xyz[2] = _manual_control_setpoint.yaw * _param_df_mc_dir_yaw.get();
+
+				// Throttle → collective thrust Z (stick [-1,1] → thrust 0 to -1)
+				v_thrust_sp.xyz[0] = 0.0f;
+				v_thrust_sp.xyz[1] = 0.0f;
+				v_thrust_sp.xyz[2] = -((_manual_control_setpoint.throttle + 1.f) * 0.5f) * _param_df_mc_dir_thr.get();
+
+				// Timestamps
+				v_torque_sp.timestamp = hrt_absolute_time();
+				v_thrust_sp.timestamp = hrt_absolute_time();
+				v_torque_sp.timestamp_sample = hrt_absolute_time();
+				v_thrust_sp.timestamp_sample = hrt_absolute_time();
+
+				// Publish directly to control allocator
+				_vehicle_torque_setpoint_pub.publish(v_torque_sp);
+				_vehicle_thrust_setpoint_pub.publish(v_thrust_sp);
+
+				// Debug: sticks → setpoints (every 10 cycles ~40ms)
+				if (_loop_counter % 10 == 0) {
+					PX4_INFO("[DF_1_STICKS] roll=%.3f pitch=%.3f yaw=%.3f thr=%.3f scale_rp=%.2f scale_yaw=%.2f",
+						(double)_manual_control_setpoint.roll,
+						(double)_manual_control_setpoint.pitch,
+						(double)_manual_control_setpoint.yaw,
+						(double)_manual_control_setpoint.throttle,
+						(double)_param_df_mc_dir_rp.get(),
+						(double)_param_df_mc_dir_yaw.get());
+					PX4_INFO("[DF_2_SETPOINTS] Torque[r=%.3f p=%.3f y=%.3f] Thrust[x=%.3f y=%.3f z=%.3f]",
+						(double)v_torque_sp.xyz[0],
+						(double)v_torque_sp.xyz[1],
+						(double)v_torque_sp.xyz[2],
+						(double)v_thrust_sp.xyz[0],
+						(double)v_thrust_sp.xyz[1],
+						(double)v_thrust_sp.xyz[2]);
+				}
+
+				perf_end(_loop_perf);
+				return; // EXIT - Skip ALL attitude and rate control
+			}
+			else {
+				// No valid manual input - safety fallback
+				if (_loop_counter % 100 == 0) { // Warn every ~1 second
+					PX4_WARN("[DF_DIRECT] No valid manual input, entering failsafe");
+				}
+
+				// Publish zero setpoints for safety
+				vehicle_torque_setpoint_s v_torque_sp{};
+				vehicle_thrust_setpoint_s v_thrust_sp{};
+				v_torque_sp.xyz[0] = 0.0f;
+				v_torque_sp.xyz[1] = 0.0f;
+				v_torque_sp.xyz[2] = 0.0f;
+				v_thrust_sp.xyz[0] = 0.0f;
+				v_thrust_sp.xyz[1] = 0.0f;
+				v_thrust_sp.xyz[2] = 0.0f;
+				v_torque_sp.timestamp = hrt_absolute_time();
+				v_thrust_sp.timestamp = hrt_absolute_time();
+				_vehicle_torque_setpoint_pub.publish(v_torque_sp);
+				_vehicle_thrust_setpoint_pub.publish(v_thrust_sp);
+
+				perf_end(_loop_perf);
+				return; // EXIT - Don't run normal controllers in failsafe
+			}
+		}
+	}
+	// ============================================================
+	// END DIRECT FLIGHT CONTROL MODE
+	// ============================================================
+
 
 	// Update hover thrust for stick scaling
 	if (_hover_thrust_estimate_sub.updated()) {
@@ -289,6 +421,20 @@ MulticopterAttitudeControl::Run()
 		const bool run_att_ctrl = _vehicle_control_mode.flag_control_attitude_enabled
 					  && (is_hovering || is_tailsitter_transition);
 
+		// [DBG5] Log attitude controller activation flags at ~1Hz
+		static int att_mode_counter = 0;
+		if (++att_mode_counter >= 100) {
+			att_mode_counter = 0;
+			PX4_INFO("[DBG5_ATT] run=%d att_en=%d hovering=%d manual=%d pos_ctrl=%d vel_ctrl=%d alt_ctrl=%d",
+				 (int)run_att_ctrl,
+				 (int)_vehicle_control_mode.flag_control_attitude_enabled,
+				 (int)is_hovering,
+				 (int)_vehicle_control_mode.flag_control_manual_enabled,
+				 (int)_vehicle_control_mode.flag_control_position_enabled,
+				 (int)_vehicle_control_mode.flag_control_velocity_enabled,
+				 (int)_vehicle_control_mode.flag_control_altitude_enabled);
+		}
+
 		if (run_att_ctrl) {
 			// Generate the attitude setpoint from stick inputs if we are in Manual/Stabilized mode
 			if (_vehicle_control_mode.flag_control_manual_enabled &&
@@ -315,6 +461,17 @@ MulticopterAttitudeControl::Run()
 					_attitude_control.setAttitudeSetpoint(Quatf(vehicle_attitude_setpoint.q_d), vehicle_attitude_setpoint.yaw_sp_move_rate);
 					_thrust_setpoint_body = Vector3f(vehicle_attitude_setpoint.thrust_body);
 					_last_attitude_setpoint = vehicle_attitude_setpoint.timestamp;
+
+					// [DBG5] Log attitude setpoint received from pos controller at ~1Hz
+					static int att_sp_rx_counter = 0;
+					if (++att_sp_rx_counter >= 100) {
+						att_sp_rx_counter = 0;
+						PX4_INFO("[DBG5_ATT] att_sp recv: thrust_body[%.3f,%.3f,%.3f] yaw_rate=%.3f",
+							 (double)vehicle_attitude_setpoint.thrust_body[0],
+							 (double)vehicle_attitude_setpoint.thrust_body[1],
+							 (double)vehicle_attitude_setpoint.thrust_body[2],
+							 (double)vehicle_attitude_setpoint.yaw_sp_move_rate);
+					}
 				}
 			}
 
@@ -362,6 +519,19 @@ MulticopterAttitudeControl::Run()
 			rates_setpoint.timestamp = hrt_absolute_time();
 
 			_vehicle_rates_setpoint_pub.publish(rates_setpoint);
+
+			// [DBG5] Log rates setpoint published to rate controller at ~1Hz
+			static int rates_pub_counter = 0;
+			if (++rates_pub_counter >= 100) {
+				rates_pub_counter = 0;
+				PX4_INFO("[DBG5_ATT] rates_sp pub: thrust[%.3f,%.3f,%.3f] rates_rpy[%.3f,%.3f,%.3f]",
+					 (double)rates_setpoint.thrust_body[0],
+					 (double)rates_setpoint.thrust_body[1],
+					 (double)rates_setpoint.thrust_body[2],
+					 (double)rates_setpoint.roll,
+					 (double)rates_setpoint.pitch,
+					 (double)rates_setpoint.yaw);
+			}
 
 		} else {
 			_man_roll_input_filter.reset(0.f);

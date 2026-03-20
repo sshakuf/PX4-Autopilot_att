@@ -55,6 +55,8 @@
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/vehicle_thrust_setpoint.h>
+#include <uORB/topics/vehicle_torque_setpoint.h>
 #include <lib/mathlib/math/filter/AlphaFilter.hpp>
 #include <lib/slew_rate/SlewRate.hpp>
 #include <lib/stick_yaw/StickYaw.hpp>
@@ -99,7 +101,7 @@ private:
 	AttitudeControl _attitude_control; /**< class for attitude control calculations */
 	StickYaw _stick_yaw{this};
 
-	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
+	uORB::Subscription _parameter_update_sub{ORB_ID(parameter_update)};
 
 	uORB::Subscription _hover_thrust_estimate_sub{ORB_ID(hover_thrust_estimate)};
 	uORB::Subscription _vehicle_attitude_setpoint_sub{ORB_ID(vehicle_attitude_setpoint)};
@@ -114,6 +116,8 @@ private:
 
 	uORB::Publication<vehicle_rates_setpoint_s>     _vehicle_rates_setpoint_pub{ORB_ID(vehicle_rates_setpoint)};    /**< rate setpoint publication */
 	uORB::Publication<vehicle_attitude_setpoint_s>  _vehicle_attitude_setpoint_pub;
+	uORB::Publication<vehicle_torque_setpoint_s>    _vehicle_torque_setpoint_pub{ORB_ID(vehicle_torque_setpoint)};  /**< torque setpoint publication for direct control */
+	uORB::Publication<vehicle_thrust_setpoint_s>    _vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};  /**< thrust setpoint publication for direct control */
 
 	manual_control_setpoint_s       _manual_control_setpoint {};    /**< manual control setpoint */
 	vehicle_control_mode_s          _vehicle_control_mode {};       /**< vehicle control mode */
@@ -145,6 +149,7 @@ private:
 	bool _vtol_in_transition_mode{false};
 
 	uint8_t _quat_reset_counter{0};
+	uint32_t _loop_counter{0}; ///< loop counter for periodic logging
 
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::MC_AIRMODE>)         _param_mc_airmode,
@@ -167,6 +172,12 @@ private:
 		(ParamFloat<px4::params::MPC_THR_HOVER>) _param_mpc_thr_hover,
 		(ParamInt<px4::params::MPC_THR_CURVE>) _param_mpc_thr_curve,
 
-		(ParamFloat<px4::params::COM_SPOOLUP_TIME>) _param_com_spoolup_time
+		(ParamFloat<px4::params::COM_SPOOLUP_TIME>) _param_com_spoolup_time,
+
+		/* Direct Flight Control Parameters */
+		(ParamInt<px4::params::DF_MC_DIR_EN>) _param_df_mc_dir_en,
+		(ParamFloat<px4::params::DF_MC_DIR_RP>) _param_df_mc_dir_rp,
+		(ParamFloat<px4::params::DF_MC_DIR_YAW>) _param_df_mc_dir_yaw,
+		(ParamFloat<px4::params::DF_MC_DIR_THR>) _param_df_mc_dir_thr
 	)
 };

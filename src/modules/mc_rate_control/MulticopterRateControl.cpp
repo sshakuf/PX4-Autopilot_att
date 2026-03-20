@@ -185,8 +185,8 @@ MulticopterRateControl::Run()
 			}
 		}
 
-		// run the rate controller
-		if (_vehicle_control_mode.flag_control_rates_enabled) {
+		// run the rate controller (skip when Direct Flight - mc_att_control publishes directly)
+		if (_vehicle_control_mode.flag_control_rates_enabled && !_param_df_mc_dir_en.get()) {
 
 			// reset integral if disarmed
 			if (!_vehicle_control_mode.flag_armed || _vehicle_status.vehicle_type != vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {

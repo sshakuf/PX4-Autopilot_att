@@ -440,6 +440,19 @@ ControlAllocator::Run()
 
 			_control_allocation[i]->clipActuatorSetpoint();
 		}
+
+		// Debug: allocator in → motors out (every ~50ms)
+		static int _df_dbg_counter = 0;
+		if (++_df_dbg_counter >= 10) {
+			_df_dbg_counter = 0;
+			const auto &act_sp = _control_allocation[0]->getActuatorSetpoint();
+			PX4_INFO("[DF_3_ALLOC_IN] Torque[r=%.3f p=%.3f y=%.3f] Thrust[x=%.3f y=%.3f z=%.3f]",
+				(double)_torque_sp(0), (double)_torque_sp(1), (double)_torque_sp(2),
+				(double)_thrust_sp(0), (double)_thrust_sp(1), (double)_thrust_sp(2));
+			PX4_INFO("[DF_4_MOTORS] m0=%.3f m1=%.3f m2=%.3f m3=%.3f m4=%.3f m5=%.3f",
+				(double)act_sp(0), (double)act_sp(1), (double)act_sp(2),
+				(double)act_sp(3), (double)act_sp(4), (double)act_sp(5));
+		}
 	}
 
 	// Publish actuator setpoint and allocator status

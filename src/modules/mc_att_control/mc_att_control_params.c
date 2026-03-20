@@ -158,3 +158,61 @@ PARAM_DEFINE_FLOAT(MC_YAWRATE_MAX, 200.0f);
  * @group Multicopter Position Control
  */
 PARAM_DEFINE_FLOAT(MC_MAN_TILT_TAU, 0.0f);
+
+/**
+ * Direct Flight: Enable direct RC to thrust/torque control
+ *
+ * Bypasses attitude and rate controllers in manual modes.
+ * RC stick inputs directly command thrust and torque to motors.
+ * Works in Position, Altitude, and Acro modes when enabled.
+ *
+ * Designed for constrained vehicles (e.g., horizontal drones on tether)
+ * where direct control is preferred over stabilization.
+ *
+ * @boolean
+ * @reboot_required false
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_INT32(DF_MC_DIR_EN, 0);
+
+/**
+ * Direct Flight: Roll/Pitch scaling factor
+ *
+ * Scales RC roll/pitch stick inputs to roll/pitch TORQUE (not thrust).
+ * Uses same control allocation as yaw for full motor response. 1.0 = 1:1.
+ *
+ * @min 0.0
+ * @max 10.0
+ * @decimal 2
+ * @increment 0.1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(DF_MC_DIR_RP, 1.0f);
+
+/**
+ * Direct Flight: Yaw scaling factor
+ *
+ * Scales RC yaw stick input [-1,1] to yaw torque output.
+ * 1.0 = true 1:1 (stick 100% → torque 100%). Params refresh at runtime.
+ *
+ * @min 0.0
+ * @max 10.0
+ * @decimal 2
+ * @increment 0.1
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(DF_MC_DIR_YAW, 1.0f);
+
+/**
+ * Direct Flight: Thrust scaling factor
+ *
+ * Scales RC throttle stick input to thrust output.
+ * For horizontal drones, may need adjustment based on configuration.
+ *
+ * @min 0.0
+ * @max 10.0
+ * @decimal 2
+ * @increment 0.05
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(DF_MC_DIR_THR, 1.0f);
