@@ -185,8 +185,14 @@ MulticopterRateControl::Run()
 			}
 		}
 
-		// run the rate controller (skip when Direct Flight - mc_att_control publishes directly)
-		if (_vehicle_control_mode.flag_control_rates_enabled && !_param_df_mc_dir_en.get()) {
+		// run the rate controller (skip only when Direct Flight is active - mc_att_control publishes torque/thrust directly)
+		const bool direct_flight_active = _param_df_mc_dir_en.get() &&
+						  _vehicle_control_mode.flag_control_manual_enabled &&
+						  !_vehicle_control_mode.flag_control_altitude_enabled &&
+						  !_vehicle_control_mode.flag_control_velocity_enabled &&
+						  !_vehicle_control_mode.flag_control_position_enabled;
+
+		if (_vehicle_control_mode.flag_control_rates_enabled && !direct_flight_active) {
 
 			// reset integral if disarmed
 			if (!_vehicle_control_mode.flag_armed || _vehicle_status.vehicle_type != vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
