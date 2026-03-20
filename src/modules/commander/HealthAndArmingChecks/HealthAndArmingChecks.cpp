@@ -125,6 +125,16 @@ void HealthAndArmingChecks::updateParams()
 	}
 }
 
+bool HealthAndArmingChecks::canRun(uint8_t nav_state) const
+{
+	// DF_ARM_CHK disabled: allow mode switching (for horizontal/tethered drones)
+	if (_param_df_arm_chk.get() == 0) {
+		return true;
+	}
+
+	return _reporter.canRun(nav_state);
+}
+
 bool HealthAndArmingChecks::reportIfUnreportedDifferences()
 {
 	return _reporter.reportIfUnreportedDifferences();

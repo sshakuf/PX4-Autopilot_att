@@ -98,8 +98,9 @@ public:
 
 	/**
 	 * Whether switching into a given navigation mode is possible
+	 * When DF_ARM_CHK=0, always allow (for horizontal/tethered drones)
 	 */
-	bool canRun(uint8_t nav_state) const { return _reporter.canRun(nav_state); }
+	bool canRun(uint8_t nav_state) const;
 
 	/**
 	 * Query the mode requirements: check if a mode prevents arming
@@ -115,6 +116,10 @@ public:
 protected:
 	void updateParams() override;
 private:
+	DEFINE_PARAMETERS(
+		(ParamInt<px4::params::DF_ARM_CHK>) _param_df_arm_chk
+	)
+
 	failsafe_flags_s _failsafe_flags{};
 
 	Context _context;

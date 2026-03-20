@@ -303,24 +303,6 @@ MulticopterAttitudeControl::Run()
 				_vehicle_torque_setpoint_pub.publish(v_torque_sp);
 				_vehicle_thrust_setpoint_pub.publish(v_thrust_sp);
 
-				// Debug: sticks → setpoints (every 10 cycles ~40ms)
-				if (_loop_counter % 10 == 0) {
-					PX4_INFO("[DF_1_STICKS] roll=%.3f pitch=%.3f yaw=%.3f thr=%.3f scale_rp=%.2f scale_yaw=%.2f",
-						(double)_manual_control_setpoint.roll,
-						(double)_manual_control_setpoint.pitch,
-						(double)_manual_control_setpoint.yaw,
-						(double)_manual_control_setpoint.throttle,
-						(double)_param_df_mc_dir_rp.get(),
-						(double)_param_df_mc_dir_yaw.get());
-					PX4_INFO("[DF_2_SETPOINTS] Torque[r=%.3f p=%.3f y=%.3f] Thrust[x=%.3f y=%.3f z=%.3f]",
-						(double)v_torque_sp.xyz[0],
-						(double)v_torque_sp.xyz[1],
-						(double)v_torque_sp.xyz[2],
-						(double)v_thrust_sp.xyz[0],
-						(double)v_thrust_sp.xyz[1],
-						(double)v_thrust_sp.xyz[2]);
-				}
-
 				perf_end(_loop_perf);
 				return; // EXIT - Skip ALL attitude and rate control
 			}
