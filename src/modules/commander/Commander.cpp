@@ -603,6 +603,11 @@ transition_result_t Commander::arm(arm_disarm_reason_t calling_reason, bool run_
 		run_preflight_checks = false;
 	}
 
+	// DF_ARM_CHK disabled: skip all arm checks (for horizontal/tethered drones)
+	if (_param_df_arm_chk.get() == 0) {
+		run_preflight_checks = false;
+	}
+
 	if (run_preflight_checks) {
 		if (_vehicle_control_mode.flag_control_manual_enabled) {
 
@@ -675,8 +680,10 @@ transition_result_t Commander::disarm(arm_disarm_reason_t calling_reason, bool f
 	}
 
 	if (!forced) {
-		const bool landed = (_vehicle_land_detected.landed || _vehicle_land_detected.maybe_landed
-				     || is_ground_vehicle(_vehicle_status));
+		// DF_LAND_CHK disabled: allow disarm without requiring landed state
+		const bool landed = _param_df_land_chk.get() == 0
+				   || (_vehicle_land_detected.landed || _vehicle_land_detected.maybe_landed
+				       || is_ground_vehicle(_vehicle_status));
 		const bool mc_manual_thrust_mode = _vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING
 						   && _vehicle_control_mode.flag_control_manual_enabled
 						   && !_vehicle_control_mode.flag_control_climb_rate_enabled;
@@ -1928,8 +1935,15 @@ void Commander::run()
 			_last_health_and_arming_check = now;
 
 			perf_begin(_preflight_check_perf);
-			_health_and_arming_checks.update();
-			bool pre_flight_checks_pass = _health_and_arming_checks.canArm(_vehicle_status.nav_state);
+			bool pre_flight_checks_pass;
+
+			if (_param_df_arm_chk.get() == 0) {
+				// DF_ARM_CHK disabled: always pass preflight checks
+				pre_flight_checks_pass = true;
+			} else {
+				_health_and_arming_checks.update();
+				pre_flight_checks_pass = _health_and_arming_checks.canArm(_vehicle_status.nav_state);
+			}
 
 			if (_vehicle_status.pre_flight_checks_pass != pre_flight_checks_pass) {
 				_vehicle_status.pre_flight_checks_pass = pre_flight_checks_pass;
@@ -2171,6 +2185,12 @@ void Commander::landDetectorUpdate()
 		const bool was_landed = _vehicle_land_detected.landed;
 		_vehicle_land_detected_sub.copy(&_vehicle_land_detected);
 
+		// DF_LAND_CHK disabled: ignore land detection (for horizontal/tethered drones)
+		if (_param_df_land_chk.get() == 0) {
+			_vehicle_land_detected.landed = false;
+			_vehicle_land_detected.maybe_landed = false;
+		}
+
 		// Only take actions if armed
 		if (isArmed()) {
 			if (!was_landed && _vehicle_land_detected.landed) {
@@ -2325,8 +2345,8 @@ void Commander::handleAutoDisarm()
 	// Auto disarm when landed or kill switch engaged
 	if (isArmed()) {
 
-		// Check for auto-disarm on landing or pre-flight
-		if (_param_com_disarm_land.get() > 0 || _param_com_disarm_prflt.get() > 0) {
+		// Check for auto-disarm on landing or pre-flight (skip when DF_LAND_CHK disabled)
+		if (_param_df_land_chk.get() != 0 && (_param_com_disarm_land.get() > 0 || _param_com_disarm_prflt.get() > 0)) {
 
 			const bool auto_disarm_land_enabled = _param_com_disarm_land.get() > 0 && !_mission_in_progress
 							      && !_config_overrides.disable_auto_disarm;

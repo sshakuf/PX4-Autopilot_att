@@ -1035,3 +1035,39 @@ PARAM_DEFINE_INT32(COM_FLTT_LOW_ACT, 0);
  *
  */
 PARAM_DEFINE_INT32(COM_MODE_ARM_CHK, 0);
+
+/**
+ * Enable arm checks
+ *
+ * When enabled (1): perform all arming checks (sticks position, land position,
+ * engine state, preflight checks, etc.). Standard safety behavior.
+ *
+ * When disabled (0): skip all arm checks. Allows arming regardless of stick
+ * position, land detection, or other preflight conditions. Intended for
+ * horizontal/tethered drones (e.g. wire-supported) where these checks are
+ * not applicable.
+ *
+ * @group Commander
+ * @value 0 Disabled - no arm checks
+ * @value 1 Enabled - full arm checks (default)
+ * @boolean
+ */
+PARAM_DEFINE_INT32(DF_ARM_CHK, 1);
+
+/**
+ * Enable land detection and land-related logic
+ *
+ * When enabled (1): use land detector for auto-disarm, landing detection,
+ * and disarm-on-land checks. Standard behavior.
+ *
+ * When disabled (0): disable automatic land detection and land-related logic.
+ * No auto-disarm on landing, disarm allowed without requiring landed state.
+ * Intended for horizontal/tethered drones where landing detection is not
+ * applicable.
+ *
+ * @group Commander
+ * @value 0 Disabled - no land detection
+ * @value 1 Enabled - full land detection (default)
+ * @boolean
+ */
+PARAM_DEFINE_INT32(DF_LAND_CHK, 1);
