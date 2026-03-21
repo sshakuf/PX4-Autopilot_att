@@ -298,24 +298,17 @@ void PositionControl::getLocalPositionSetpoint(
 
 void PositionControl::getAttitudeSetpoint(
     vehicle_attitude_setpoint_s &attitude_setpoint) const {
-  // Horizontal-only drone: Output direct thrust commands without attitude
-  // tilting Maintain level attitude (no roll/pitch) and pass horizontal thrust
-  // directly
+  // Horizontal drone: propellers point horizontally - pass thrust X/Y directly.
+  // Allocator supports thrust_body[0], [1] for horizontal movement (no tilt needed).
+  // Keep attitude level; thrust = power needed for velocity, not angle change.
 
-  // Set level attitude - no tilting for horizontal movement
-  Quaternionf q_sp;
-  q_sp = Quaternionf(
-      Eulerf(0.0f, 0.0f, _yaw_sp)); // Roll=0, Pitch=0, Yaw=controlled
+  Quaternionf q_sp(Eulerf(0.0f, 0.0f, _yaw_sp));
   q_sp.copyTo(attitude_setpoint.q_d);
 
-  // Pass the direct thrust commands
-  // thrust_body[0] = forward/backward thrust (body frame X)
-  // thrust_body[1] = left/right thrust (body frame Y)
-  // thrust_body[2] = up/down thrust (always 0 for horizontal-only)
+  // Direct thrust: body X=forward, body Y=left, body Z=0 (no vertical thrust)
   attitude_setpoint.thrust_body[0] = _thr_sp(0);
   attitude_setpoint.thrust_body[1] = _thr_sp(1);
   attitude_setpoint.thrust_body[2] = 0.0f;
 
-  // Set yaw rate
   attitude_setpoint.yaw_sp_move_rate = _yawspeed_sp;
 }
