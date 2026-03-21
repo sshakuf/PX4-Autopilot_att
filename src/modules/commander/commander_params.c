@@ -1071,3 +1071,15 @@ PARAM_DEFINE_INT32(DF_ARM_CHK, 1);
  * @boolean
  */
 PARAM_DEFINE_INT32(DF_LAND_CHK, 1);
+
+/**
+ * Relax XY requirement for Position mode (horizontal drone)
+ *
+ * When 1: allow position mode without valid xy from estimator.
+ * Sticks still command velocity. For horizontal/tethered drones.
+ *
+ * @group Commander
+ * @value 0 Disabled (default)
+ * @value 1 Enabled
+ */
+PARAM_DEFINE_INT32(DF_POS_RELAX, 0);

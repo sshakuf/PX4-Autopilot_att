@@ -103,6 +103,15 @@ bool HealthAndArmingChecks::update(bool force_reporting, bool is_arming_request)
 		_health_report_pub.publish(health_report);
 	}
 
+	// DF_ARM_CHK disabled: relax failsafe flags for horizontal/tethered drones
+	// Prevents "Autopilot disengaged" from position/RC/heading/altitude checks
+	if (_param_df_arm_chk.get() == 0) {
+		_failsafe_flags.local_position_invalid = false;
+		_failsafe_flags.local_position_invalid_relaxed = false;
+		_failsafe_flags.local_altitude_invalid = false;
+		_failsafe_flags.manual_control_signal_lost = false;
+	}
+
 	// Check if we need to publish the failsafe flags
 	const hrt_abstime now = hrt_absolute_time();
 

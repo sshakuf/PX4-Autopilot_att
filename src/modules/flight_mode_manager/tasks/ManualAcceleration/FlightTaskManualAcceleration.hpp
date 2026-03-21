@@ -43,6 +43,7 @@ public:
 	FlightTaskManualAcceleration() = default;
 	virtual ~FlightTaskManualAcceleration() = default;
 	bool activate(const trajectory_setpoint_s &last_setpoint) override;
+	bool updateInitialize() override;
 	bool update() override;
 
 protected:
@@ -54,6 +55,7 @@ protected:
 
 	DEFINE_PARAMETERS_CUSTOM_PARENT(FlightTask,
 					(ParamFloat<px4::params::MPC_VEL_MANUAL>) _param_mpc_vel_manual,
-					(ParamFloat<px4::params::MPC_ACC_HOR>) _param_mpc_acc_hor
+					(ParamFloat<px4::params::MPC_ACC_HOR>) _param_mpc_acc_hor,
+					(ParamInt<px4::params::DF_POS_RELAX>) _param_df_pos_relax
 				       )
 };

@@ -38,8 +38,8 @@
 #pragma once
 
 // Enable/disable detailed position control debug logging
-// Set to 1 to enable, 0 to disable
-#define POS_CTRL_DEBUG_LOG 0
+// Set to 1 to enable [DBG_POS] trace from RC to motors
+#define POS_CTRL_DEBUG_LOG 1
 
 #if POS_CTRL_DEBUG_LOG
 # define POS_CTRL_INFO(fmt, ...) PX4_INFO(fmt, ##__VA_ARGS__)
@@ -75,6 +75,7 @@
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_constraints.h>
 #include <uORB/topics/vehicle_control_mode.h>
+#include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
@@ -117,6 +118,7 @@ private:
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
 	uORB::Subscription _hover_thrust_estimate_sub{ORB_ID(hover_thrust_estimate)};
+	uORB::Subscription _manual_control_setpoint_sub{ORB_ID(manual_control_setpoint)};
 	uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
 	uORB::Subscription _vehicle_constraints_sub{ORB_ID(vehicle_constraints)};
 	uORB::Subscription _vehicle_control_mode_sub{ORB_ID(vehicle_control_mode)};
@@ -195,6 +197,8 @@ private:
 		(ParamFloat<px4::params::MPC_XY_ERR_MAX>) _param_mpc_xy_err_max,
 		(ParamFloat<px4::params::MPC_YAWRAUTO_MAX>) _param_mpc_yawrauto_max,
 		(ParamFloat<px4::params::MPC_YAWRAUTO_ACC>) _param_mpc_yawrauto_acc,
+
+		(ParamInt<px4::params::DF_POS_RELAX>) _param_df_pos_relax,
 
 		// Keep heading parameters
 		(ParamInt<px4::params::DF_YAW_HOLD_EN>) _param_df_yaw_hold_en,

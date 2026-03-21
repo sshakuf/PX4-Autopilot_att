@@ -468,32 +468,35 @@ void MulticopterPositionControl::Run() {
       _goto_control.update(dt, states.position, states.yaw);
     }
 
-    _trajectory_setpoint_sub.update(&_setpoint);
+    const bool traj_updated = _trajectory_setpoint_sub.update(&_setpoint);
 
     adjustSetpointForEKFResets(vehicle_local_position, _setpoint);
 
+    // [DBG_POS] mc_pos_control: received setpoint and conditions
+    static int dbg_mc_cnt = 0;
+    const bool dbg = (++dbg_mc_cnt % 50) == 0;
+    if (dbg) {
+      PX4_INFO("[DBG_POS] mc_pos: pos_ctrl_en=%d traj_updated=%d sp_ge_enabled=%d",
+               _vehicle_control_mode.flag_multicopter_position_control_enabled, traj_updated,
+               (int)(_setpoint.timestamp >= _time_position_control_enabled));
+      PX4_INFO("[DBG_POS] mc_pos: acc_sp[%.3f,%.3f] vel_sp[%.2f,%.2f] pos_sp[%.1f,%.1f]",
+               (double)_setpoint.acceleration[0], (double)_setpoint.acceleration[1],
+               (double)_setpoint.velocity[0], (double)_setpoint.velocity[1],
+               (double)_setpoint.position[0], (double)_setpoint.position[1]);
+    }
+
     // Debug: Log control mode and setpoint status
     if (_vehicle_control_mode.flag_multicopter_position_control_enabled) {
-      static int control_enable_counter = 0;
-      if (++control_enable_counter >= 50) {
-        control_enable_counter = 0;
-        POS_CTRL_INFO("[POS_CTRL] Control ENABLED | Armed: %d | Offboard: %d",
-                 _vehicle_control_mode.flag_armed,
-                 _vehicle_control_mode.flag_control_offboard_enabled);
-      }
-
       // set failsafe setpoint if there hasn't been a new
       // trajectory setpoint since position control started
       if ((_setpoint.timestamp < _time_position_control_enabled) &&
           (vehicle_local_position.timestamp_sample >
            _time_position_control_enabled)) {
-        POS_CTRL_INFO("[POS_CTRL] Generating FAILSAFE setpoint (no valid trajectory)");
+        if (dbg) {
+          PX4_WARN("[DBG_POS] mc_pos: FAILSAFE - sp_ts < enabled_ts, using failsafe setpoint");
+        }
         _setpoint = generateFailsafeSetpoint(
             vehicle_local_position.timestamp_sample, states, false);
-        POS_CTRL_INFO("[POS_CTRL] Failsafe SP: pos[%.2f,%.2f,%.2f] vel[%.2f,%.2f,%.2f]",
-                 (double)_setpoint.position[0], (double)_setpoint.position[1],
-                 (double)_setpoint.position[2], (double)_setpoint.velocity[0],
-                 (double)_setpoint.velocity[1], (double)_setpoint.velocity[2]);
       }
       // If we don't have a valid position setpoint, use current position for hold
       else if (!PX4_ISFINITE(_setpoint.position[0]) || !PX4_ISFINITE(_setpoint.position[1])) {
@@ -533,8 +536,14 @@ void MulticopterPositionControl::Run() {
       }
     }
 
-    if (_vehicle_control_mode.flag_multicopter_position_control_enabled &&
-        (_setpoint.timestamp >= _time_position_control_enabled)) {
+    const bool enter_pos_ctrl = _vehicle_control_mode.flag_multicopter_position_control_enabled &&
+                                (_setpoint.timestamp >= _time_position_control_enabled);
+
+    if (dbg && _vehicle_control_mode.flag_multicopter_position_control_enabled && !enter_pos_ctrl) {
+      PX4_WARN("[DBG_POS] mc_pos: NOT entering pos ctrl - sp_ts < enabled_ts (stale setpoint)");
+    }
+
+    if (enter_pos_ctrl) {
 
       // Update vehicle constraints
       _vehicle_constraints_sub.update(&_vehicle_constraints);
@@ -582,6 +591,26 @@ void MulticopterPositionControl::Run() {
         }
       }
 
+      // DF_POS_RELAX fallback: when trajectory has no valid acc_sp, use sticks directly
+      // (flight task may fail when estimator invalid; guarantees stick response)
+      if (_param_df_pos_relax.get() == 1 &&
+          (!PX4_ISFINITE(_setpoint.acceleration[0]) || !PX4_ISFINITE(_setpoint.acceleration[1]))) {
+        manual_control_setpoint_s manual{};
+        if (_manual_control_setpoint_sub.copy(&manual) && manual.valid &&
+            hrt_elapsed_time(&manual.timestamp) < 200_ms) {
+          const float acc_scale = _param_mpc_acc_hor.get();
+          // Pitch = forward/back (NED +X forward), Roll = left/right (NED +Y right)
+          _setpoint.acceleration[0] = manual.pitch * acc_scale;
+          _setpoint.acceleration[1] = manual.roll * acc_scale;
+          _setpoint.acceleration[2] = 0.f;
+          if (dbg) {
+            PX4_INFO("[DBG_POS] mc_pos: STICK FALLBACK acc[%.2f,%.2f] pitch=%.2f roll=%.2f",
+                     (double)_setpoint.acceleration[0], (double)_setpoint.acceleration[1],
+                     (double)manual.pitch, (double)manual.roll);
+          }
+        }
+      }
+
       _control.setInputSetpoint(_setpoint);
 
       // Debug: Check if we have valid position and velocity data
@@ -609,6 +638,17 @@ void MulticopterPositionControl::Run() {
         _control.resetIntegralXY();
       }
 
+      // DF_POS_RELAX: allow sticks->thrust when estimator has no valid xy position/velocity
+      const bool xy_invalid = !PX4_ISFINITE(states.position(0)) ||
+                              !PX4_ISFINITE(states.velocity(0));
+      const bool relaxed = _param_df_pos_relax.get() == 1 && xy_invalid;
+      _control.setPositionRelaxed(relaxed);
+
+      if (dbg) {
+        PX4_INFO("[DBG_POS] mc_pos: xy_invalid=%d relaxed=%d pos(0)=%.1f vel(0)=%.1f",
+                 xy_invalid, relaxed, (double)states.position(0), (double)states.velocity(0));
+      }
+
       _control.setState(states);
 
       // Debug: Log control state before update
@@ -629,15 +669,11 @@ void MulticopterPositionControl::Run() {
       // Run position control
       bool control_success = _control.update(dt);
 
-      // Debug: Log control update result
-      static int control_update_counter = 0;
-      if (++control_update_counter >= 50) {
-        control_update_counter = 0;
-        if (control_success) {
-          POS_CTRL_INFO("[CTRL_UPDATE] SUCCESS | dt: %.4f", (double)dt);
-        } else {
-          POS_CTRL_WARN("[CTRL_UPDATE] FAILED | dt: %.4f | Trying fallback...", (double)dt);
-        }
+      if (dbg) {
+        Vector3f thr;
+        _control.getThrustSetpoint(thr);
+        PX4_INFO("[DBG_POS] mc_pos: ctrl_ok=%d thr_sp[%.3f,%.3f,%.3f]",
+                 control_success, (double)thr(0), (double)thr(1), (double)thr(2));
       }
 
       if (control_success) {

@@ -337,10 +337,29 @@ void FlightModeManager::generateTrajectorySetpoint(const float dt,
 	trajectory_setpoint_s setpoint = FlightTask::empty_trajectory_setpoint;
 	vehicle_constraints_s constraints = FlightTask::empty_constraints;
 
-	if (_current_task.task->updateInitialize() && _current_task.task->update()) {
+	const bool init_ok = _current_task.task->updateInitialize();
+	const bool update_ok = init_ok && _current_task.task->update();
+
+	// [DBG_POS] FlightModeManager: task success and setpoint
+	static int dbg_fmm_cnt = 0;
+	if ((++dbg_fmm_cnt % 50) == 0) {
+		PX4_INFO("[DBG_POS] FMM: task=%u init_ok=%d update_ok=%d",
+			 (unsigned)_current_task.index, init_ok, update_ok);
+	}
+
+	if (update_ok) {
 		// setpoints and constraints for the position controller from flighttask
 		setpoint = _current_task.task->getTrajectorySetpoint();
 		constraints = _current_task.task->getConstraints();
+
+		if ((dbg_fmm_cnt % 50) == 0) {
+			PX4_INFO("[DBG_POS] FMM pub: pos[%.1f,%.1f,%.1f] vel[%.2f,%.2f,%.2f] acc[%.3f,%.3f]",
+				 (double)setpoint.position[0], (double)setpoint.position[1], (double)setpoint.position[2],
+				 (double)setpoint.velocity[0], (double)setpoint.velocity[1], (double)setpoint.velocity[2],
+				 (double)setpoint.acceleration[0], (double)setpoint.acceleration[1]);
+		}
+	} else if ((dbg_fmm_cnt % 50) == 0) {
+		PX4_WARN("[DBG_POS] FMM: task FAILED, publishing empty setpoint");
 	}
 
 	if (_takeoff_status_sub.updated()) {

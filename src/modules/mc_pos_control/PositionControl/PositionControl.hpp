@@ -154,6 +154,12 @@ public:
 	void setInputSetpoint(const trajectory_setpoint_s &setpoint);
 
 	/**
+	 * Relax position/velocity requirement when DF_POS_RELAX is set (horizontal drone).
+	 * When true, controller accepts acceleration-only setpoints without valid estimator position/velocity.
+	 */
+	void setPositionRelaxed(bool relaxed) { _position_relaxed = relaxed; }
+
+	/**
 	 * Apply P-position and PID-velocity controller that updates the member
 	 * thrust, yaw- and yawspeed-setpoints.
 	 * @see _thr_sp
@@ -256,4 +262,6 @@ private:
 	// Keep heading feature
 	bool _keep_heading_enabled{false}; /**< enable keep heading feature */
 	float _keep_heading_target{0.0f}; /**< target heading in radians */
+
+	bool _position_relaxed{false}; /**< DF_POS_RELAX: accept acc_sp without valid pos/vel from estimator */
 };

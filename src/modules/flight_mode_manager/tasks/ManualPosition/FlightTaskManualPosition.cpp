@@ -44,7 +44,10 @@ using namespace matrix;
 bool FlightTaskManualPosition::updateInitialize()
 {
 	bool ret = FlightTaskManualAltitude::updateInitialize();
-	// require valid position / velocity in xy
+	// require valid position / velocity in xy, unless DF_POS_XY_RELAXED (horizontal drone)
+	if (_param_df_pos_relax.get() == 1) {
+		return ret;  // velocity-only from sticks when xy invalid
+	}
 	return ret && Vector2f(_position).isAllFinite() && Vector2f(_velocity).isAllFinite();
 }
 
@@ -53,12 +56,15 @@ bool FlightTaskManualPosition::activate(const trajectory_setpoint_s &last_setpoi
 	// all requirements from altitude-mode still have to hold
 	bool ret = FlightTaskManualAltitude::activate(last_setpoint);
 
-	_position_setpoint(0) = _position(0);
-	_position_setpoint(1) = _position(1);
+	if (Vector2f(_position).isAllFinite()) {
+		_position_setpoint(0) = _position(0);
+		_position_setpoint(1) = _position(1);
+	} else {
+		_position_setpoint(0) = NAN;
+		_position_setpoint(1) = NAN;
+	}
 	_velocity_setpoint(0) = _velocity_setpoint(1) = 0.0f;
 
-	// for position-controlled mode, we need a valid position and velocity state
-	// in NE-direction
 	return ret;
 }
 
@@ -99,6 +105,13 @@ void FlightTaskManualPosition::_scaleSticks()
 
 void FlightTaskManualPosition::_updateXYlock()
 {
+	/* When xy invalid (DF_POS_XY_RELAXED), no position lock - velocity only */
+	if (!Vector2f(_position).isAllFinite() || !Vector2f(_velocity).isAllFinite()) {
+		_position_setpoint(0) = NAN;
+		_position_setpoint(1) = NAN;
+		return;
+	}
+
 	/* If position lock is not active, position setpoint is set to NAN.*/
 	const float vel_xy_norm = Vector2f(_velocity).length();
 	const bool apply_brake = Vector2f(_velocity_setpoint).length() < FLT_EPSILON;
