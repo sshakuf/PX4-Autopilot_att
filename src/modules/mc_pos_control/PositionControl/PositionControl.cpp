@@ -314,16 +314,20 @@ void PositionControl::getLocalPositionSetpoint(
 
 void PositionControl::getAttitudeSetpoint(
     vehicle_attitude_setpoint_s &attitude_setpoint) const {
-  // Horizontal drone: propellers point horizontally - pass thrust X/Y directly.
-  // Allocator supports thrust_body[0], [1] for horizontal movement (no tilt needed).
+  // Horizontal drone: propellers point horizontally - thrust must be rotated into body frame by yaw
   // Keep attitude level; thrust = power needed for velocity, not angle change.
 
   Quaternionf q_sp(Eulerf(0.0f, 0.0f, _yaw_sp));
   q_sp.copyTo(attitude_setpoint.q_d);
 
-  // Direct thrust: body X=forward, body Y=left, body Z=0 (no vertical thrust)
-  attitude_setpoint.thrust_body[0] = _thr_sp(0);
-  attitude_setpoint.thrust_body[1] = _thr_sp(1);
+  // Rotate thrust setpoint from world to body frame using -actual yaw
+  const float cos_yaw = cosf(-_yaw);
+  const float sin_yaw = sinf(-_yaw);
+  float thrust_body_x =  _thr_sp(0) * cos_yaw - _thr_sp(1) * sin_yaw;
+  float thrust_body_y =  _thr_sp(0) * sin_yaw + _thr_sp(1) * cos_yaw;
+
+  attitude_setpoint.thrust_body[0] = thrust_body_x;
+  attitude_setpoint.thrust_body[1] = thrust_body_y;
   attitude_setpoint.thrust_body[2] = 0.0f;
 
   attitude_setpoint.yaw_sp_move_rate = _yawspeed_sp;

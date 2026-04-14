@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PX4 Optical Flow — Technical Report</title>
+  <style>
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --surface2:  #21253a;
+      --border:    #2e3350;
+      --accent:    #4f8ef7;
+      --accent2:   #7c5cbf;
+      --green:     #3ecf8e;
+      --yellow:    #f5c842;
+      --red:       #e05c5c;
+      --text:      #e2e6f0;
+      --muted:     #8892a4;
+      --code-bg:   #141722;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 15px;
+      line-height: 1.7;
+      padding: 0;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #141826 0%, #1a1f35 50%, #111520 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 48px 40px 36px;
+      position: relative;
+      overflow: hidden;
+    }
+    header::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(79,142,247,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    header .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(79,142,247,0.12);
+      border: 1px solid rgba(79,142,247,0.3);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    header h1 {
+      font-size: 32px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.25;
+      margin-bottom: 8px;
+    }
+    header h1 span { color: var(--accent); }
+    header .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      margin-bottom: 24px;
+    }
+    .meta-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .meta-pills span {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .meta-pills span b { color: var(--text); }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      min-height: calc(100vh - 200px);
+    }
+
+    /* ── Sidebar TOC ── */
+    nav.toc {
+      width: 240px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 28px 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    nav.toc .toc-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 20px 12px;
+    }
+    nav.toc a {
+      display: block;
+      padding: 5px 20px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      border-left: 2px solid transparent;
+      transition: all 0.15s;
+    }
+    nav.toc a:hover {
+      color: var(--text);
+      border-left-color: var(--accent);
+      background: rgba(79,142,247,0.06);
+    }
+    nav.toc a.section {
+      font-weight: 600;
+      color: var(--text);
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    /* ── Main content ── */
+    main {
+      flex: 1;
+      min-width: 0;
+      padding: 40px 48px;
+      max-width: 960px;
+    }
+
+    /* ── Sections ── */
+    section {
+      margin-bottom: 56px;
+    }
+    section .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-num {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--accent);
+      margin: 28px 0 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    p { margin-bottom: 14px; color: var(--text); }
+
+    /* ── Key insight box ── */
+    .callout {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+      font-size: 14px;
+    }
+    .callout.green  { border-left-color: var(--green); }
+    .callout.yellow { border-left-color: var(--yellow); }
+    .callout.red    { border-left-color: var(--red); }
+    .callout strong { color: #fff; }
+
+    /* ── Code blocks ── */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      overflow-x: auto;
+      margin: 16px 0;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: #c9d1e0;
+    }
+    code {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      background: rgba(79,142,247,0.1);
+      border: 1px solid rgba(79,142,247,0.2);
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: #93c5fd;
+    }
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      color: inherit;
+      font-size: inherit;
+    }
+
+    /* ── Tables ── */
+    .table-wrap {
+      overflow-x: auto;
+      margin: 16px 0;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead tr {
+      background: var(--surface2);
+    }
+    th {
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+    td {
+      padding: 9px 14px;
+      border-top: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    td code { font-size: 11.5px; }
+    .tag-required {
+      background: rgba(229,62,62,0.15);
+      border: 1px solid rgba(229,62,62,0.3);
+      color: #fc8181;
+      border-radius: 4px;
+      padding: 1px 7px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .tag-tune {
+      background: rgba(245,200,66,0.12);
+      border: 1px solid rgba(245,200,66,0.3);
+      color: #f6e05e;
+      border-radius: 4px;
+      padding: 1px 7px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Pipeline diagram ── */
+    .pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 20px 0;
+    }
+    .pipeline-step {
+      display: flex;
+      gap: 0;
+    }
+    .pipeline-line {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 40px;
+      flex-shrink: 0;
+    }
+    .pipeline-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 8px rgba(79,142,247,0.5);
+    }
+    .pipeline-vert {
+      width: 2px;
+      flex: 1;
+      background: linear-gradient(to bottom, var(--accent), var(--accent2));
+      min-height: 24px;
+      opacity: 0.4;
+    }
+    .pipeline-box {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 4px;
+    }
+    .pipeline-box .step-title {
+      font-weight: 600;
+      color: #fff;
+      font-size: 14px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .pipeline-box .step-title .file-ref {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+    .pipeline-box ul {
+      list-style: none;
+      padding: 0;
+    }
+    .pipeline-box ul li {
+      font-size: 13px;
+      color: var(--muted);
+      padding: 2px 0;
+    }
+    .pipeline-box ul li::before {
+      content: '→ ';
+      color: var(--accent);
+    }
+
+    /* ── Math box ── */
+    .math-box {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 16px 0;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 2;
+    }
+    .math-box .step-label {
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 12px;
+      margin-bottom: 2px;
+      display: block;
+    }
+    .math-box .comment {
+      color: #5a6580;
+      font-style: italic;
+    }
+
+    /* ── Takeaways ── */
+    .takeaways {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+      margin: 20px 0;
+    }
+    .takeaway-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+    .takeaway-card .num {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--border);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .takeaway-card p {
+      font-size: 13px;
+      margin: 0;
+      color: var(--muted);
+    }
+    .takeaway-card p strong { color: var(--text); }
+
+    /* ── Sign convention table ── */
+    .sign-table td:nth-child(3),
+    .sign-table td:nth-child(4) {
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px 48px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- ────────────────── HEADER ────────────────── -->
+<header>
+  <div class="badge">&#9679; PX4 Technical Report</div>
+  <h1>Optical Flow in <span>PX4</span></h1>
+  <p class="subtitle">Complete reference for building a custom target-tracking optical flow source with no GPS</p>
+  <div class="meta-pills">
+    <span><b>Branch:</b> horizontal_att</span>
+    <span><b>Board:</b> micoair_h743-v2</span>
+    <span><b>Date:</b> 2026-03-21</span>
+    <span><b>Mode:</b> No GPS — Optical Flow Only</span>
+  </div>
+</header>
+
+<div class="layout">
+
+<!-- ────────────────── TOC ────────────────── -->
+<nav class="toc">
+  <div class="toc-title">Contents</div>
+  <a class="section" href="#s0">0. Angular Motion Explained</a>
+  <a class="section" href="#s1">1. Overview</a>
+  <a class="section" href="#s2">2. MAVLink Message</a>
+  <a class="section" href="#s3">3. Data Pipeline</a>
+  <a class="section" href="#s4">4. uORB Messages</a>
+  <a class="section" href="#s5">5. Flow → Velocity Math</a>
+  <a class="section" href="#s6">6. EKF2 Parameters</a>
+  <a class="section" href="#s7">7. Fusion Start Conditions</a>
+  <a class="section" href="#s8">8. Position Hold (No GPS)</a>
+  <a class="section" href="#s9">9. Your Custom Source</a>
+  <a class="section" href="#s10">10. Height — Critical</a>
+  <a class="section" href="#s11">11. Recommended Params</a>
+  <a class="section" href="#s12">12. Key Takeaways</a>
+</nav>
+
+<!-- ────────────────── MAIN ────────────────── -->
+<main>
+
+<!-- ── 0. Angular Motion Explained ── -->
+<section id="s0">
+  <div class="section-header">
+    <div class="section-num" style="background:linear-gradient(135deg,#3ecf8e,#2a9d6e);">?</div>
+    <h2>Understanding Angular Motion: How Radians Become Physical Movement</h2>
+  </div>
+
+  <p style="font-size:15px; color:var(--muted); font-style:italic; margin-bottom:20px;">
+    "What does <em>angular</em> actually mean? If the drone moves 1 meter in X, what does the sensor see?"
+  </p>
+
+  <h3>The Core Geometry</h3>
+  <p>Imagine your camera pointing straight down from height <strong>h = 2 metres</strong>. The drone then moves <strong>1 metre to the right</strong>:</p>
+
+  <pre><code>    BEFORE          AFTER
+      📷     →→→    📷
+      |              |
+    2m|             2m|
+      |              |
+   ───A──────────────B───
+      ↑              ↑
+  target (A)      (now under B)
+
+  The camera is now above B but the target is still at A.
+  The sensor sees the target has "shifted" by angle θ.</code></pre>
+
+  <p>The camera does not measure "I moved 1 metre". It measures the <strong>angle</strong> the target has shifted in its field of view:</p>
+
+  <pre><code>         📷  (above B)
+        /|
+       / |
+      /  | h = 2m
+     /   |
+    / θ  |
+   A─────B
+   |←1m→|
+
+tan(θ) = 1m / 2m  =  0.5
+      θ = arctan(0.5)  ≈  0.46 radians  ≈  26.5°</code></pre>
+
+  <div class="callout green">
+    Moving <strong>1 metre at 2m height</strong> = <strong>0.46 radians</strong> of apparent angular shift.<br/>
+    The same 1 metre at 5m height = only <strong>0.20 radians</strong>.<br/>
+    <strong>Higher altitude → smaller angular reading for the same physical movement.</strong>
+  </div>
+
+  <h3>The Formula</h3>
+  <div class="math-box">
+    <span class="step-label">Angular shift from physical movement</span>
+    θ (radians) = displacement (metres) / height (metres)
+
+    <span class="step-label">Recovering physical movement from angle</span>
+    displacement (m) = θ (rad) × height (m)
+  </div>
+
+  <div class="table-wrap" style="margin-top:16px;">
+    <table>
+      <thead><tr><th>Height</th><th>Drone moves 1 m</th><th>Angular shift seen by sensor</th></tr></thead>
+      <tbody>
+        <tr><td>0.5 m</td><td>1 m</td><td><code>2.00 rad</code> — huge signal</td></tr>
+        <tr><td>1 m</td><td>1 m</td><td><code>1.00 rad</code></td></tr>
+        <tr><td>2 m</td><td>1 m</td><td><code>0.50 rad</code></td></tr>
+        <tr><td>5 m</td><td>1 m</td><td><code>0.20 rad</code></td></tr>
+        <tr><td>10 m</td><td>1 m</td><td><code>0.10 rad</code> — small signal</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>What the Sensor Actually Measures</h3>
+  <p>The sensor does not measure a single snapshot angle. Between two frames it counts how many pixels the scene shifted, converts to radians, and <strong>accumulates</strong> that over a fixed time window:</p>
+
+  <pre><code># Example: target moved 50 pixels in one frame interval
+# Camera: 640 px wide, 1.2 rad horizontal FOV
+
+rad_per_pixel = 1.2 / 640  =  0.001875 rad/px
+
+angular_shift = 50 px × 0.001875  =  0.09375 rad  ← this is integrated_x in the MAVLink message
+
+# If this happened in dt = 0.014 s  (70 Hz publishing rate):
+angular_rate  = 0.09375 / 0.014   =  6.7 rad/s    ← flow_rate used internally by EKF2</code></pre>
+
+  <h3>Full Chain: Pixels → Radians → Velocity → Position Hold</h3>
+  <div class="pipeline" style="margin-top:12px;">
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot" style="background:#3ecf8e;box-shadow:0 0 8px rgba(62,207,142,0.5);"></div>
+        <div class="pipeline-vert"></div>
+      </div>
+      <div class="pipeline-box" style="border-color:#3ecf8e40;">
+        <div class="step-title">Camera sees target shifted 50 pixels</div>
+      </div>
+    </div>
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot"></div>
+        <div class="pipeline-vert"></div>
+      </div>
+      <div class="pipeline-box">
+        <div class="step-title">Convert pixels → radians (your code)</div>
+        <ul><li><code>integrated_x = 50 px × (FOV / resolution) = 0.094 rad</code></li>
+            <li>Send in <code>OPTICAL_FLOW_RAD</code> MAVLink message</li></ul>
+      </div>
+    </div>
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot"></div>
+        <div class="pipeline-vert"></div>
+      </div>
+      <div class="pipeline-box">
+        <div class="step-title">EKF2 divides by dt → angular rate</div>
+        <ul><li><code>flow_rate = 0.094 rad / 0.014 s = 6.7 rad/s</code></li></ul>
+      </div>
+    </div>
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot"></div>
+        <div class="pipeline-vert"></div>
+      </div>
+      <div class="pipeline-box">
+        <div class="step-title">EKF2 subtracts gyro rotation</div>
+        <ul><li><code>flow_compensated = flow_rate − gyro_rate</code></li>
+            <li>Removes rotation-induced apparent flow, leaves only translation</li></ul>
+      </div>
+    </div>
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot"></div>
+        <div class="pipeline-vert"></div>
+      </div>
+      <div class="pipeline-box">
+        <div class="step-title">EKF2 multiplies by height → velocity</div>
+        <ul><li><code>velocity = flow_compensated × height</code></li>
+            <li><code>= 6.7 rad/s × 2 m = 13.4 m/s</code> — "drone is moving at 13.4 m/s"</li></ul>
+      </div>
+    </div>
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot" style="background:#f5c842;box-shadow:0 0 8px rgba(245,200,66,0.5);"></div>
+      </div>
+      <div class="pipeline-box" style="border-color:#f5c84240;">
+        <div class="step-title">Position controller brakes → target returns to centre → hover</div>
+        <ul><li>Flow goes to 0 when drone is stationary over target</li>
+            <li>Position hold maintained</li></ul>
+      </div>
+    </div>
+
+  </div>
+
+  <h3>Why Radians and Not Just Pixels?</h3>
+  <p>Because <strong>pixels are meaningless without knowing the camera FOV</strong>. A 100-pixel shift on a narrow telephoto lens is a tiny angle. The same 100-pixel shift on a wide-angle lens is a huge angle. Converting to radians makes the measurement <strong>camera-independent</strong> — PX4 does not need to know your camera specs. You handle that conversion before sending the message.</p>
+
+  <h3>Quick Reference Table</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Sensor Reading</th><th>What it means physically</th></tr></thead>
+      <tbody>
+        <tr><td><code>integrated_x = 0.09 rad</code></td><td>Scene appeared to rotate 0.09 rad around X this window</td></tr>
+        <tr><td>At height 2 m → <code>vel = 6.4 m/s</code></td><td>Drone was actually moving at 6.4 m/s horizontally</td></tr>
+        <tr><td>Same reading at height 5 m → <code>vel = 16 m/s</code></td><td>Same sensor output = faster movement at higher altitude</td></tr>
+        <tr><td><code>flow = 0</code></td><td>Scene not moving = drone stationary above target</td></tr>
+        <tr><td><code>flow = constant</code></td><td>Drone drifting at constant velocity</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <strong>The key equation — always remember this:</strong><br/><br/>
+    <code>velocity (m/s) = (integrated_rad / dt_seconds) × height_metres</code>
+  </div>
+
+</section>
+
+<!-- ── 1. Overview ── -->
+<section id="s1">
+  <div class="section-header">
+    <div class="section-num">1</div>
+    <h2>Overview: What is Optical Flow</h2>
+  </div>
+  <p>Optical flow sensors measure <strong>angular motion of the scene</strong> below the drone by tracking pixel movement frame-to-frame. The fundamental output is <strong>integrated angle change in radians</strong> — how much the scene appeared to rotate around each body axis during a time window.</p>
+  <div class="callout green">
+    <strong>Core Equation:</strong><br/>
+    <code>velocity (m/s) = flow_rate (rad/s) &times; height_above_ground (m)</code><br/>
+    <br/>
+    This is how PX4 derives position from optical flow — without GPS. If you know how fast the scene appears to rotate, and how high you are, you know how fast you are moving.
+  </div>
+  <p>A physical optical flow sensor (e.g., PMW3901) tracks pixel shifts between frames, divides by a calibration constant (385 counts/radian for PMW3901) to get angular displacement in radians, then accumulates these over a fixed time window. That accumulated value — <em>not a rate</em> — is what gets sent in the MAVLink message.</p>
+</section>
+
+<!-- ── 2. MAVLink Message ── -->
+<section id="s2">
+  <div class="section-header">
+    <div class="section-num">2</div>
+    <h2>MAVLink Message: OPTICAL_FLOW_RAD</h2>
+  </div>
+  <p>This is <strong>the exact message you need to publish</strong> from your custom system. PX4's MAVLink receiver listens for this message ID (106) and maps it directly into the internal sensor pipeline.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Field</th><th>Type</th><th>Unit</th><th>Description</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>time_usec</code></td><td>uint64</td><td>µs</td><td>Timestamp</td><td></td></tr>
+        <tr><td><code>sensor_id</code></td><td>uint8</td><td>—</td><td>Sensor ID, use 0</td><td></td></tr>
+        <tr><td><code>integration_time_us</code></td><td>uint32</td><td>µs</td><td>Time window over which flow was accumulated (e.g. 14285 µs = 70 Hz)</td><td><span class="tag-required">Required</span></td></tr>
+        <tr><td><code>integrated_x</code></td><td>float</td><td><b>radians</b></td><td>Flow around X axis (pitch axis, forward/back motion)</td><td><span class="tag-required">Required</span></td></tr>
+        <tr><td><code>integrated_y</code></td><td>float</td><td><b>radians</b></td><td>Flow around Y axis (roll axis, left/right motion)</td><td><span class="tag-required">Required</span></td></tr>
+        <tr><td><code>integrated_xgyro</code></td><td>float</td><td>radians</td><td>Gyro rotation X during same window. Send NaN to use IMU.</td><td></td></tr>
+        <tr><td><code>integrated_ygyro</code></td><td>float</td><td>radians</td><td>Gyro rotation Y. Send NaN to use IMU.</td><td></td></tr>
+        <tr><td><code>integrated_zgyro</code></td><td>float</td><td>radians</td><td>Gyro rotation Z. Send NaN to use IMU.</td><td></td></tr>
+        <tr><td><code>temperature</code></td><td>int16</td><td>centi-°C</td><td>Sensor temperature, set 0 if unknown</td><td></td></tr>
+        <tr><td><code>quality</code></td><td>uint8</td><td>0–255</td><td>Flow quality. 0=bad, 255=perfect. EKF ignores if below EKF2_OF_QMIN.</td><td><span class="tag-required">Required</span></td></tr>
+        <tr><td><code>time_delta_distance_us</code></td><td>uint32</td><td>µs</td><td>Time window for distance measurement</td><td></td></tr>
+        <tr><td><code>distance</code></td><td>float</td><td><b>meters</b></td><td>Height above ground. Set -1.0 if unknown. Used for terrain estimation.</td><td><span class="tag-tune">Critical</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Sign Convention</h3>
+  <ul style="padding-left:20px; margin-bottom:14px;">
+    <li style="margin-bottom:6px;"><code>integrated_x</code> positive = scene rotates right-hand positive about X (nose-down motion)</li>
+    <li style="margin-bottom:6px;"><code>integrated_y</code> positive = scene rotates right-hand positive about Y (roll-right motion)</li>
+    <li>These are <strong>accumulated angles</strong> over <code>integration_time_us</code>, <em>not angular rates</em></li>
+  </ul>
+</section>
+
+<!-- ── 3. Data Pipeline ── -->
+<section id="s3">
+  <div class="section-header">
+    <div class="section-num">3</div>
+    <h2>Data Pipeline: Sensor to Position Hold</h2>
+  </div>
+
+  <div class="pipeline">
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot" style="background:#3ecf8e;box-shadow:0 0 8px rgba(62,207,142,0.5);"></div>
+        <div class="pipeline-vert"></div>
+      </div>
+      <div class="pipeline-box" style="border-color:#3ecf8e40;">
+        <div class="step-title">YOUR CUSTOM SYSTEM</div>
+        <ul>
+          <li>Camera captures frame, CV algorithm finds target</li>
+          <li>Compute <code>dx_pixels, dy_pixels</code> since last frame</li>
+          <li>Convert to radians: <code>radians = pixels × (FOV / resolution)</code></li>
+          <li>Build and send <code>OPTICAL_FLOW_RAD</code> MAVLink message</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot"></div>
+        <div class="pipeline-vert"></div>
+      </div>
+      <div class="pipeline-box">
+        <div class="step-title">
+          MAVLink Receiver
+          <span class="file-ref">mavlink_receiver.cpp:833</span>
+        </div>
+        <ul>
+          <li>Decodes <code>OPTICAL_FLOW_RAD</code> (msg ID 106)</li>
+          <li><code>integrated_x/y</code> → <code>pixel_flow[0/1]</code></li>
+          <li><code>integrated_*gyro</code> → <code>delta_angle[0..2]</code></li>
+          <li><code>quality, distance, integration_time_us</code> mapped directly</li>
+          <li>Publishes uORB: <code>sensor_optical_flow</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot"></div>
+        <div class="pipeline-vert"></div>
+      </div>
+      <div class="pipeline-box">
+        <div class="step-title">Sensors Module</div>
+        <ul>
+          <li>Applies <code>SENS_FLOW_ROT</code> yaw rotation correction</li>
+          <li>Applies <code>SENS_FLOW_SCALE</code> scale factor</li>
+          <li>Rate-limits to <code>SENS_FLOW_RATE</code></li>
+          <li>Publishes uORB: <code>vehicle_optical_flow</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot"></div>
+        <div class="pipeline-vert"></div>
+      </div>
+      <div class="pipeline-box">
+        <div class="step-title">
+          EKF2 — UpdateFlowSample
+          <span class="file-ref">EKF2.cpp</span>
+        </div>
+        <ul>
+          <li>Converts radians → rad/s: <code>flow_rate = -pixel_flow / dt</code></li>
+          <li>Note: sign <strong>inverted</strong> by EKF convention</li>
+          <li>Timestamps midpoint of integration window</li>
+          <li>Pushes into delayed flow buffer (aligned to IMU timeline)</li>
+          <li>Creates <code>flowSample{time_us, flow_rate, gyro_rate, quality}</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot"></div>
+        <div class="pipeline-vert"></div>
+      </div>
+      <div class="pipeline-box">
+        <div class="step-title">
+          EKF2 Fusion
+          <span class="file-ref">optical_flow_control.cpp + optical_flow_fusion.cpp</span>
+        </div>
+        <ul>
+          <li>Gyro compensation: <code>flow_comp = flow_rate − (gyro_rate − gyro_bias)</code></li>
+          <li>Range: <code>range = hagl / cos(tilt)</code></li>
+          <li>Body velocity: <code>vel_x = −flow_comp_y × range</code>, <code>vel_y = flow_comp_x × range</code></li>
+          <li>Sequential X/Y Kalman fusion with innovation gates</li>
+          <li>Publishes uORB: <code>vehicle_optical_flow_vel</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pipeline-step">
+      <div class="pipeline-line">
+        <div class="pipeline-dot" style="background:#f5c842;box-shadow:0 0 8px rgba(245,200,66,0.5);"></div>
+      </div>
+      <div class="pipeline-box" style="border-color:#f5c84240;">
+        <div class="step-title">Position Controller</div>
+        <ul>
+          <li>Uses estimated NED position (pN, pE) and velocity (vN, vE)</li>
+          <li>Optical flow continuously corrects horizontal velocity estimate</li>
+          <li>Position hold maintained above target</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── 4. uORB Messages ── -->
+<section id="s4">
+  <div class="section-header">
+    <div class="section-num">4</div>
+    <h2>uORB Messages Reference</h2>
+  </div>
+
+  <h3>sensor_optical_flow — Raw input to EKF</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Unit</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>pixel_flow[2]</code></td><td>float[2]</td><td>radians</td><td>Accumulated optical flow angles (RH convention)</td></tr>
+        <tr><td><code>delta_angle[3]</code></td><td>float[3]</td><td>radians</td><td>Accumulated gyro angles over same window. NaN if unavailable.</td></tr>
+        <tr><td><code>delta_angle_available</code></td><td>bool</td><td>—</td><td>Whether gyro data is valid</td></tr>
+        <tr><td><code>distance_m</code></td><td>float</td><td>meters</td><td>Distance to center of flow field</td></tr>
+        <tr><td><code>distance_available</code></td><td>bool</td><td>—</td><td>Whether distance is valid</td></tr>
+        <tr><td><code>integration_timespan_us</code></td><td>uint32</td><td>µs</td><td>Accumulation time window</td></tr>
+        <tr><td><code>quality</code></td><td>uint8</td><td>0–255</td><td>Quality indicator</td></tr>
+        <tr><td><code>max_flow_rate</code></td><td>float</td><td>rad/s</td><td>Sensor maximum measurable angular rate</td></tr>
+        <tr><td><code>min_ground_distance</code></td><td>float</td><td>meters</td><td>Min reliable operating height</td></tr>
+        <tr><td><code>max_ground_distance</code></td><td>float</td><td>meters</td><td>Max reliable operating height</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>vehicle_optical_flow_vel — Output from EKF</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Unit</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>vel_body[2]</code></td><td>float[2]</td><td>m/s</td><td>Velocity in body frame from optical flow</td></tr>
+        <tr><td><code>vel_ne[2]</code></td><td>float[2]</td><td>m/s</td><td>Velocity in NED frame</td></tr>
+        <tr><td><code>vel_body_filtered[2]</code></td><td>float[2]</td><td>m/s</td><td>Low-pass filtered body velocity</td></tr>
+        <tr><td><code>vel_ne_filtered[2]</code></td><td>float[2]</td><td>m/s</td><td>Low-pass filtered NED velocity</td></tr>
+        <tr><td><code>flow_rate_uncompensated[2]</code></td><td>float[2]</td><td>rad/s</td><td>Raw integrated flow rate</td></tr>
+        <tr><td><code>flow_rate_compensated[2]</code></td><td>float[2]</td><td>rad/s</td><td>Gyro-compensated flow rate</td></tr>
+        <tr><td><code>gyro_rate[3]</code></td><td>float[3]</td><td>rad/s</td><td>Synchronized gyro measurement</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── 5. Math ── -->
+<section id="s5">
+  <div class="section-header">
+    <div class="section-num">5</div>
+    <h2>Critical: How Flow Becomes Velocity</h2>
+  </div>
+  <p>The complete math chain, verified against the PX4 source:</p>
+
+  <div class="math-box">
+    <span class="step-label">Step 1 — Gyro Compensation</span>
+    flow_compensated = flow_rate − (gyro_rate − gyro_bias)
+    <span class="comment">  // Removes rotation-induced apparent flow, leaves only translational</span>
+
+    <span class="step-label">Step 2 — Range Estimation</span>
+    range = hagl / R_to_earth(2,2)    <span class="comment">// hagl / cos(tilt)</span>
+    <span class="comment">  // Converts angular rate to linear velocity via height above ground level</span>
+
+    <span class="step-label">Step 3 — Body Frame Velocity</span>
+    vel_body_x = −flow_compensated_y × range
+    vel_body_y =  flow_compensated_x × range
+    <span class="comment">  // Note: axis swap AND sign inversion from EKF body frame convention</span>
+
+    <span class="step-label">Step 4 — EKF Innovation (Fusion)</span>
+    predicted_flow  = vel_body / range   <span class="comment">// Forward model</span>
+    innovation      = predicted − measured
+    state_update    = Kalman_gain × innovation
+  </div>
+
+  <div class="callout">
+    <strong>Key insight — Gyro source:</strong> If you send <code>NaN</code> for all gyro fields in the MAVLink message, PX4 automatically uses its own IMU gyroscope for compensation (<code>EKF2_OF_GYR_SRC = 0 Auto</code>). This is the recommended approach for a CV-based system.
+  </div>
+</section>
+
+<!-- ── 6. Parameters ── -->
+<section id="s6">
+  <div class="section-header">
+    <div class="section-num">6</div>
+    <h2>EKF2 Parameters That Control Everything</h2>
+  </div>
+
+  <h3>Primary Control Parameters</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Parameter</th><th>Default</th><th>Description</th><th>Your Value</th></tr></thead>
+      <tbody>
+        <tr><td><code>EKF2_OF_CTRL</code></td><td>1</td><td>Enable optical flow fusion. Must be 1.</td><td><strong>1</strong></td></tr>
+        <tr><td><code>EKF2_OF_DELAY</code></td><td>20 ms</td><td>Measurement delay vs IMU. Match your pipeline latency.</td><td><span class="tag-tune">tune</span></td></tr>
+        <tr><td><code>EKF2_OF_GATE</code></td><td>3.0</td><td>Innovation gate (sigma). Higher = more tolerant of outliers.</td><td>3–5</td></tr>
+        <tr><td><code>EKF2_OF_N_MIN</code></td><td>0.15 rad/s</td><td>Noise at max quality (255).</td><td><span class="tag-tune">tune</span></td></tr>
+        <tr><td><code>EKF2_OF_N_MAX</code></td><td>0.5 rad/s</td><td>Noise at min quality.</td><td><span class="tag-tune">tune</span></td></tr>
+        <tr><td><code>EKF2_OF_QMIN</code></td><td>1</td><td>Min quality to fuse in-air. Set to 1 to accept almost anything.</td><td><strong>1</strong></td></tr>
+        <tr><td><code>EKF2_OF_QMIN_GND</code></td><td>0</td><td>Min quality on ground.</td><td><strong>0</strong></td></tr>
+        <tr><td><code>EKF2_OF_GYR_SRC</code></td><td>0 Auto</td><td>0=use flow gyro if available, else IMU. 1=always IMU.</td><td><strong>0</strong></td></tr>
+        <tr><td><code>EKF2_OF_POS_X/Y/Z</code></td><td>0 m</td><td>Camera position offset from IMU in body frame.</td><td><span class="tag-tune">measure</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Sensor Configuration Parameters</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Parameter</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>SENS_FLOW_ROT</code></td><td>0</td><td>Yaw rotation correction (0=0°, 1=45°, 2=90°, ...)</td></tr>
+        <tr><td><code>SENS_FLOW_MINHGT</code></td><td>0.08 m</td><td>Minimum reliable operating height</td></tr>
+        <tr><td><code>SENS_FLOW_MAXHGT</code></td><td>100 m</td><td>Maximum reliable operating height</td></tr>
+        <tr><td><code>SENS_FLOW_MAXR</code></td><td>8 rad/s</td><td>Maximum angular rate measurable</td></tr>
+        <tr><td><code>SENS_FLOW_RATE</code></td><td>70 Hz</td><td>Maximum publication rate</td></tr>
+        <tr><td><code>SENS_FLOW_SCALE</code></td><td>1.0</td><td>Scale factor applied to raw flow measurements</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Height Estimation (Critical for No-GPS)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Parameter</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>EKF2_HGT_REF</code></td><td>1</td><td>Set to 2 (rangefinder) if available. Otherwise 0 (baro).</td></tr>
+        <tr><td><code>EKF2_RNG_CTRL</code></td><td>1</td><td>Rangefinder fusion enable.</td></tr>
+        <tr><td><code>EKF2_TERR_MASK</code></td><td>3</td><td>Terrain estimation sources. bit0=rangefinder, bit1=optical flow.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── 7. Starting Conditions ── -->
+<section id="s7">
+  <div class="section-header">
+    <div class="section-num">7</div>
+    <h2>Fusion Starting Conditions</h2>
+  </div>
+  <p>When optical flow fails to start, PX4 logs:</p>
+  <pre><code>FLOW: Starting conditions FAIL - ctrl:X tilt:X within_dist:X qual:X mag:X tilt_ok:X counter:X terrain_valid:X horiz_aid:X timeout:X
+FLOW: Distance check - hagl:X.XX min:X.XX max:X.XX</code></pre>
+  <p>All of these conditions must pass simultaneously:</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Condition</th><th>What Triggers It</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>EKF2_OF_CTRL == 1</code></td><td>Parameter set</td><td>Must set manually</td></tr>
+        <tr><td><code>tilt_align</code></td><td>IMU aligned</td><td>True after ~2s flying</td></tr>
+        <tr><td><code>hagl &ge; SENS_FLOW_MINHGT</code></td><td>Not too close</td><td>Default: 0.08 m</td></tr>
+        <tr><td><code>hagl &le; SENS_FLOW_MAXHGT</code></td><td>Not too far</td><td>Default: 100 m</td></tr>
+        <tr><td><code>quality &ge; EKF2_OF_QMIN</code></td><td>Quality OK</td><td>In-air threshold</td></tr>
+        <tr><td><code>flow_rate</code> not saturated</td><td>Not too fast</td><td>&lt; SENS_FLOW_MAXR</td></tr>
+        <tr><td><code>flow_counter &gt; 10</code></td><td>Enough samples</td><td>~0.15s at 70 Hz</td></tr>
+        <tr><td><code>terrain_valid OR horiz_aid</code></td><td>Height reference</td><td><strong>Hard one without GPS</strong></td></tr>
+        <tr><td><code>timeout &gt; 2s</code></td><td>Not rapid restart</td><td>Prevents oscillation</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout yellow">
+    <strong>Critical for no-GPS:</strong> The condition <em>terrain_valid OR horizontal_aiding_active</em> is the tricky one. Without GPS and without a rangefinder, EKF2 cannot estimate terrain height, so optical flow won't start. Solutions:<br/><br/>
+    1. <strong>Use a rangefinder</strong> (best) — directly provides HAGL and satisfies this condition<br/>
+    2. <strong>Send height in the <code>distance</code> field</strong> of OPTICAL_FLOW_RAD — PX4 uses it as terrain estimate<br/>
+    3. Barometer as height reference — works but assumes flat terrain
+  </div>
+</section>
+
+<!-- ── 8. Position Hold ── -->
+<section id="s8">
+  <div class="section-header">
+    <div class="section-num">8</div>
+    <h2>Position Hold Architecture (No GPS)</h2>
+  </div>
+  <p>When optical flow is the <strong>only</strong> horizontal aiding source, the EKF enters a constrained mode:</p>
+  <pre><code>EKF State (no GPS):
+  Horizontal velocity (vN, vE)  ← constrained by optical flow measurements
+  Horizontal position (pN, pE)  ← integrated from velocity (drifts slowly)
+  Altitude                      ← barometer or rangefinder
+  Gyro bias, accel bias         ← estimated from redundancy
+
+Dead Reckoning Check:
+  if (inertial_dead_reckoning OR isOnlyActiveSourceOfHorizontalAiding(opt_flow)):
+      is_flow_required = true
+      → EKF MUST fuse flow or reset velocity to flow-derived estimate
+      → Prevents unbounded horizontal velocity drift
+
+Position Hold (POSCTL / LOITER mode):
+  → Position controller uses estimated pN, pE, vN, vE
+  → Optical flow continuously corrects velocity estimate
+  → Without GPS: position error grows at IMU drift rate
+    but velocity error stays bounded by flow measurements</code></pre>
+</section>
+
+<!-- ── 9. Custom Source ── -->
+<section id="s9">
+  <div class="section-header">
+    <div class="section-num">9</div>
+    <h2>Building Your Custom Optical Flow Source</h2>
+  </div>
+
+  <h3>Pixel to Radian Conversion</h3>
+  <pre><code># Camera parameters:
+# FOV horizontal: fov_x radians (e.g. 1.2 rad = ~69 degrees for typical camera)
+# Resolution:     img_width x img_height pixels
+
+rad_per_pixel_x = fov_x / img_width    # e.g. 1.2 / 640 = 0.001875 rad/px
+rad_per_pixel_y = fov_y / img_height
+
+# Target moved by (dx_pixels, dy_pixels) since last message:
+integrated_x = dx_pixels * rad_per_pixel_x   # radians accumulated
+integrated_y = dy_pixels * rad_per_pixel_y</code></pre>
+
+  <h3>Complete MAVLink Message Construction</h3>
+  <pre><code>import math
+import time
+
+# Track time delta between messages
+now_us = int(time.time() * 1e6)
+dt_us  = now_us - last_publish_us   # microseconds since last message
+
+# Build OPTICAL_FLOW_RAD
+msg = mavlink.MAVLink_optical_flow_rad_message(
+    time_usec             = now_us,
+    sensor_id             = 0,
+    integration_time_us   = dt_us,          # accumulation window
+    integrated_x          = integrated_x,   # radians (X axis)
+    integrated_y          = integrated_y,   # radians (Y axis)
+    integrated_xgyro      = float('nan'),   # Let PX4 use its own IMU gyro
+    integrated_ygyro      = float('nan'),
+    integrated_zgyro      = float('nan'),
+    temperature           = 0,
+    quality               = quality,        # 0–255 from your CV confidence
+    time_delta_distance_us = dt_us,
+    distance              = height_m,       # from rangefinder, or -1.0 if unknown
+)
+mav.send(msg)</code></pre>
+
+  <h3>Sign Convention Table (Camera Looking Down)</h3>
+  <div class="table-wrap">
+    <table class="sign-table">
+      <thead><tr><th>Drone Motion</th><th>Target Moves On Screen</th><th>integrated_x</th><th>integrated_y</th></tr></thead>
+      <tbody>
+        <tr><td>Forward (nose direction)</td><td>Target moves UP in image</td><td style="color:#fc8181">negative</td><td style="color:#fc8181">negative</td></tr>
+        <tr><td>Backward</td><td>Target moves DOWN</td><td style="color:#68d391">positive</td><td style="color:#68d391">positive</td></tr>
+        <tr><td>Right</td><td>Target moves LEFT</td><td style="color:#fc8181">negative</td><td style="color:#fc8181">negative</td></tr>
+        <tr><td>Left</td><td>Target moves RIGHT</td><td style="color:#68d391">positive</td><td style="color:#68d391">positive</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout yellow">
+    <strong>Verify sign convention experimentally!</strong> Move the drone in one known direction and check the sign of your published flow. If position hold pushes the drone in the wrong direction, negate integrated_x or integrated_y, or use SENS_FLOW_ROT.
+  </div>
+
+  <h3>Target Locking Logic</h3>
+  <pre><code># Your CV algorithm tracks a target (e.g. landing pad) in the camera image.
+#
+# The KEY INSIGHT: You report the apparent motion of the scene, NOT a command.
+# PX4 interprets the flow as "drone is moving at this velocity"
+# and the position controller corrects it back to zero.
+#
+# Target at image center → scene not moving → flow = 0 → drone holds still
+# Target drifted 20px    → scene moved 20px → publish that flow → EKF corrects
+
+target_x, target_y = detect_target(frame)      # your CV
+cx = frame_width  / 2
+cy = frame_height / 2
+
+dx_pixels = target_x - cx   # positive = target right of center = drone drifted left
+dy_pixels = target_y - cy   # positive = target below center  = drone drifted back
+
+integrated_x = dx_pixels * rad_per_pixel_x
+integrated_y = dy_pixels * rad_per_pixel_y
+
+# Confidence-based quality
+quality = int(tracking_confidence * 255)   # 0–255
+quality = max(0, min(255, quality))</code></pre>
+</section>
+
+<!-- ── 10. Height ── -->
+<section id="s10">
+  <div class="section-header">
+    <div class="section-num">10</div>
+    <h2>Height — The Critical Missing Piece</h2>
+  </div>
+  <div class="callout red">
+    <strong>Optical flow alone cannot determine velocity.</strong><br/>
+    The formula is: <code>velocity = angular_rate &times; height_above_ground</code><br/>
+    Without height, EKF cannot compute velocity from flow — and flow fusion will not start.
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Height Source</th><th>Accuracy</th><th>Recommendation</th></tr></thead>
+      <tbody>
+        <tr><td>Dedicated rangefinder (TF-Luna, VL53L1X, Garmin LidarLite...)</td><td>Best ±1–5cm</td><td><strong>Strongly recommended</strong></td></tr>
+        <tr><td>Barometer (<code>EKF2_HGT_REF=0</code>)</td><td>±1–5m</td><td>Only for fixed-height operation</td></tr>
+        <tr><td><code>distance</code> field in OPTICAL_FLOW_RAD</td><td>Same as source</td><td>Send height from any source here — PX4 uses it directly for terrain estimation</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>The easiest path: measure height from your host computer (rangefinder, depth camera, or even barometer) and fill the <code>distance</code> field in every OPTICAL_FLOW_RAD message. No separate MAVLink sensor message needed.</p>
+</section>
+
+<!-- ── 11. Params ── -->
+<section id="s11">
+  <div class="section-header">
+    <div class="section-num">11</div>
+    <h2>Recommended Parameters for No-GPS Operation</h2>
+  </div>
+  <pre><code># ── Disable GPS, enable optical flow ──────────────────────────────────
+EKF2_GPS_CTRL    = 0       # Disable GPS fusion
+EKF2_OF_CTRL     = 1       # Enable optical flow fusion
+
+# ── Height reference ───────────────────────────────────────────────────
+EKF2_HGT_REF     = 2       # 2=rangefinder (if available), 0=baro
+EKF2_TERR_MASK   = 3       # Terrain from both rangefinder (bit0) and flow (bit1)
+
+# ── Quality thresholds ─────────────────────────────────────────────────
+EKF2_OF_QMIN     = 1       # Accept quality >= 1 in-air
+EKF2_OF_QMIN_GND = 0       # Accept any quality on ground
+
+# ── Noise model (tune for your CV system) ──────────────────────────────
+EKF2_OF_N_MIN    = 0.05    # Noise at best quality (good CV → low noise)
+EKF2_OF_N_MAX    = 0.3     # Noise at worst quality
+
+# ── Innovation gate ────────────────────────────────────────────────────
+EKF2_OF_GATE     = 3.0     # Increase to 5 if getting frequent rejections
+
+# ── Pipeline latency compensation ──────────────────────────────────────
+EKF2_OF_DELAY    = 50      # Your image processing latency in ms (tune!)
+
+# ── Gyro source ────────────────────────────────────────────────────────
+EKF2_OF_GYR_SRC  = 0       # Auto: use flow gyro if available, else IMU
+
+# ── Camera position relative to IMU ───────────────────────────────────
+EKF2_OF_POS_X    = 0.0     # Body frame X offset (meters, positive = forward)
+EKF2_OF_POS_Y    = 0.0     # Body frame Y offset (positive = right)
+EKF2_OF_POS_Z    = 0.1     # Body frame Z offset (positive = down/below IMU)
+
+# ── Valid height operating range ───────────────────────────────────────
+SENS_FLOW_MINHGT = 0.3     # Minimum height (meters)
+SENS_FLOW_MAXHGT = 20.0    # Maximum height (meters)
+
+# ── Sensor orientation ─────────────────────────────────────────────────
+SENS_FLOW_ROT    = 0       # 0=no rotation. Adjust if camera is rotated vs body.</code></pre>
+</section>
+
+<!-- ── 12. Takeaways ── -->
+<section id="s12">
+  <div class="section-header">
+    <div class="section-num">12</div>
+    <h2>Key Takeaways</h2>
+  </div>
+  <div class="takeaways">
+    <div class="takeaway-card">
+      <div class="num">01</div>
+      <p><strong>Send OPTICAL_FLOW_RAD</strong> — MAVLink message ID 106. No custom driver needed. PX4's MAVLink receiver handles it natively.</p>
+    </div>
+    <div class="takeaway-card">
+      <div class="num">02</div>
+      <p><strong>integrated_x/y in radians</strong>, not pixels. Convert: <code>rad = pixels × (FOV / resolution)</code></p>
+    </div>
+    <div class="takeaway-card">
+      <div class="num">03</div>
+      <p><strong>Send gyro fields as NaN.</strong> PX4 uses its own IMU gyro for rotation compensation automatically.</p>
+    </div>
+    <div class="takeaway-card">
+      <div class="num">04</div>
+      <p><strong>quality field (0–255)</strong> directly scales EKF noise. Send 200–255 when CV is confident, lower when target is lost.</p>
+    </div>
+    <div class="takeaway-card">
+      <div class="num">05</div>
+      <p><strong>Height is mandatory.</strong> Send it in the <code>distance</code> field. Without height, EKF cannot compute velocity from flow.</p>
+    </div>
+    <div class="takeaway-card">
+      <div class="num">06</div>
+      <p><strong>Publish consistently at 50–100 Hz.</strong> Irregular timing disrupts EKF timeline alignment. 70 Hz is ideal.</p>
+    </div>
+    <div class="takeaway-card">
+      <div class="num">07</div>
+      <p><strong>Verify sign convention</strong> by moving the drone slowly in a known direction and observing flow sign. Fix with <code>SENS_FLOW_ROT</code> or negate in code.</p>
+    </div>
+    <div class="takeaway-card">
+      <div class="num">08</div>
+      <p><strong>Set EKF2_OF_DELAY</strong> to your image processing latency (30–100ms typical for CV). Wrong delay = position oscillation.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <span>PX4-Autopilot — branch: <strong>horizontal_att</strong> — micoair_h743-v2</span>
+  <span>Generated 2026-03-21</span>
+</footer>
+
+</body>
+</html>
