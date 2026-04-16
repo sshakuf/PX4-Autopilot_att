@@ -90,11 +90,22 @@ void PositionControl::setKeepHeading(bool enable, float heading_deg) {
   _keep_heading_target = wrap_pi(_keep_heading_target);
 }
 
+void PositionControl::setMaxYawRate(float max_yaw_rate_deg_s) {
+  _max_yaw_rate = math::radians(max_yaw_rate_deg_s);
+}
+
+void PositionControl::setYawSpeedGains(float P, float I, float D) {
+  _gain_yawspeed_p = P;
+  _gain_yawspeed_i = I;
+  _gain_yawspeed_d = D;
+}
+
 void PositionControl::setState(const PositionControlStates &states) {
   _pos = states.position;
   _vel = states.velocity;
   _yaw = states.yaw;
   _vel_dot = states.acceleration;
+  _yaw_rate = states.yaw_rate;
 }
 
 void PositionControl::setInputSetpoint(const trajectory_setpoint_s &setpoint) {
@@ -116,31 +127,56 @@ bool PositionControl::update(const float dt) {
     if (_keep_heading_enabled) {
       _yaw_sp = _keep_heading_target;
 
-      // Calculate heading error (wrap to [-pi, pi])
+      // Outer loop: Heading error to desired yaw speed
       float heading_error = _keep_heading_target - _yaw;
       heading_error = wrap_pi(heading_error);
 
-      // Proportional controller for yaw rate with minimum rate for final approach
-      // Increased gain for faster response and better precision
-      const float yaw_p_gain = 3.0f;  // Increased from 1.0 for faster rotation
-      _yawspeed_sp = yaw_p_gain * heading_error;
+      // Proportional gain for heading to yaw speed conversion
+      const float heading_p_gain = 2.0f;  // rad/s per rad of error
+      float desired_yaw_speed = heading_p_gain * heading_error;
 
-      // Apply minimum yaw rate when close to target to overcome friction/deadband
-      // This ensures the drone continues rotating even with small errors
-      const float min_yaw_rate = math::radians(5.0f);  // 5 deg/s minimum
-      const float error_threshold = math::radians(10.0f);  // Apply min rate within 10 degrees
+      // Limit desired yaw speed using configurable parameter
+      desired_yaw_speed = math::constrain(desired_yaw_speed,
+                                         -_max_yaw_rate,
+                                         _max_yaw_rate);
 
-      if (fabsf(heading_error) > math::radians(1.0f) && fabsf(heading_error) < error_threshold) {
-        // Close to target but not there yet - apply minimum rate
-        if (fabsf(_yawspeed_sp) < min_yaw_rate) {
-          _yawspeed_sp = (heading_error > 0.0f) ? min_yaw_rate : -min_yaw_rate;
-        }
+      // Inner loop: PID control on yaw speed error
+      float yawspeed_error = desired_yaw_speed - _yaw_rate;
+
+      // Proportional term
+      float yawspeed_p = _gain_yawspeed_p * yawspeed_error;
+
+      // Integral term with anti-windup
+      _yawspeed_integral += yawspeed_error * dt;
+
+      // Anti-windup: limit integral
+      const float integral_limit = math::radians(45.0f);  // 45 deg/s max from integral
+      _yawspeed_integral = math::constrain(_yawspeed_integral,
+                                          -integral_limit / _gain_yawspeed_i,
+                                          integral_limit / _gain_yawspeed_i);
+
+      float yawspeed_i = _gain_yawspeed_i * _yawspeed_integral;
+
+      // Derivative term
+      float yawspeed_d = _gain_yawspeed_d * (yawspeed_error - _yawspeed_error_prev) / dt;
+      _yawspeed_error_prev = yawspeed_error;
+
+      // Combine PID terms
+      _yawspeed_sp = yawspeed_p + yawspeed_i + yawspeed_d;
+
+      // Final rate limiting using configurable parameter
+      _yawspeed_sp = math::constrain(_yawspeed_sp, -_max_yaw_rate, _max_yaw_rate);
+
+      // Reset integral when heading error is very small (achieved target)
+      if (fabsf(heading_error) < math::radians(1.0f)) {
+        _yawspeed_integral *= 0.95f;  // Slowly decay integral near target
       }
 
-      // Limit yaw rate to prevent excessive rotation speed
-      const float max_yaw_rate = math::radians(90.0f);  // Increased to 90 deg/s for faster rotation
-      _yawspeed_sp = math::constrain(_yawspeed_sp, -max_yaw_rate, max_yaw_rate);
     } else {
+      // Reset PID state when not in keep heading mode
+      _yawspeed_integral = 0.0f;
+      _yawspeed_error_prev = 0.0f;
+
       _yawspeed_sp = PX4_ISFINITE(_yawspeed_sp) ? _yawspeed_sp : 0.f;
       _yaw_sp = PX4_ISFINITE(_yaw_sp)
                     ? _yaw_sp

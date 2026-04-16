@@ -202,7 +202,11 @@ private:
 
 		// Keep heading parameters
 		(ParamInt<px4::params::DF_YAW_HOLD_EN>) _param_df_yaw_hold_en,
-		(ParamFloat<px4::params::DF_YAW_HOLD>) _param_df_yaw_hold
+		(ParamFloat<px4::params::DF_YAW_HOLD>) _param_df_yaw_hold,
+		(ParamFloat<px4::params::DF_YAWSPEED_MAXR>) _param_df_yawspeed_maxr,
+		(ParamFloat<px4::params::DF_YAWSPEED_P>) _param_df_yawspeed_p,
+		(ParamFloat<px4::params::DF_YAWSPEED_I>) _param_df_yawspeed_i,
+		(ParamFloat<px4::params::DF_YAWSPEED_D>) _param_df_yawspeed_d
 	);
 
 	math::WelfordMean<float> _sample_interval_s{};

@@ -50,6 +50,7 @@ struct PositionControlStates {
 	matrix::Vector3f velocity;
 	matrix::Vector3f acceleration;
 	float yaw;
+	float yaw_rate;
 };
 
 /**
@@ -139,6 +140,20 @@ public:
 	 * @param heading_deg Target heading in degrees (0-360, 0=North)
 	 */
 	void setKeepHeading(bool enable, float heading_deg);
+
+	/**
+	 * Set maximum yaw rate for keep heading
+	 * @param max_yaw_rate_deg_s Maximum yaw rate in degrees per second
+	 */
+	void setMaxYawRate(float max_yaw_rate_deg_s);
+
+	/**
+	 * Set the yaw speed PID gains
+	 * @param P proportional gain
+	 * @param I integral gain
+	 * @param D derivative gain
+	 */
+	void setYawSpeedGains(float P, float I, float D);
 
 	/**
 	 * Pass the current vehicle state to the controller
@@ -262,6 +277,17 @@ private:
 	// Keep heading feature
 	bool _keep_heading_enabled{false}; /**< enable keep heading feature */
 	float _keep_heading_target{0.0f}; /**< target heading in radians */
+	float _max_yaw_rate{math::radians(90.0f)}; /**< maximum yaw rate in rad/s */
+
+	// Yaw speed PID gains
+	float _gain_yawspeed_p{1.0f}; /**< proportional gain for yaw speed control */
+	float _gain_yawspeed_i{0.1f}; /**< integral gain for yaw speed control */
+	float _gain_yawspeed_d{0.05f}; /**< derivative gain for yaw speed control */
+
+	// Yaw speed PID state
+	float _yawspeed_error_prev{0.0f}; /**< previous yaw speed error for derivative */
+	float _yawspeed_integral{0.0f}; /**< integral accumulator for yaw speed */
+	float _yaw_rate{0.0f}; /**< current gyro yaw rate (rad/s) */
 
 	bool _position_relaxed{false}; /**< DF_POS_RELAX: accept acc_sp without valid pos/vel from estimator */
 };

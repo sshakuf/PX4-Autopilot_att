@@ -61,3 +61,62 @@ PARAM_DEFINE_INT32(DF_YAW_HOLD_EN, 0);
  * @group Multicopter Position Control
  */
 PARAM_DEFINE_FLOAT(DF_YAW_HOLD, 0.0f);
+
+/**
+ * Maximum desired yaw rate for keep heading
+ *
+ * Maximum yaw rate setpoint when keep heading is enabled.
+ * This limits the commanded rotation speed during heading corrections.
+ * Higher values allow faster heading corrections but may cause oscillations.
+ * Lower values provide smoother rotation but slower heading acquisition.
+ *
+ * @unit deg/s
+ * @min 10.0
+ * @max 180.0
+ * @decimal 1
+ * @increment 5.0
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAWSPEED_MAXR, 90.0f);
+
+/**
+ * Yaw speed proportional gain
+ *
+ * Proportional gain for yaw speed control when keep heading is enabled.
+ * Higher values result in faster response to yaw rate errors.
+ *
+ * @min 0.0
+ * @max 5.0
+ * @decimal 2
+ * @increment 0.05
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAWSPEED_P, 1.0f);
+
+/**
+ * Yaw speed integral gain
+ *
+ * Integral gain for yaw speed control when keep heading is enabled.
+ * Eliminates steady-state errors in yaw rate tracking.
+ *
+ * @min 0.0
+ * @max 2.0
+ * @decimal 2
+ * @increment 0.01
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAWSPEED_I, 0.1f);
+
+/**
+ * Yaw speed derivative gain
+ *
+ * Derivative gain for yaw speed control when keep heading is enabled.
+ * Dampens oscillations and improves stability.
+ *
+ * @min 0.0
+ * @max 1.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAWSPEED_D, 0.05f);

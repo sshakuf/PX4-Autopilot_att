@@ -319,6 +319,14 @@ void MulticopterPositionControl::parameters_update(bool force) {
     // Set keep heading parameters
     _control.setKeepHeading(_param_df_yaw_hold_en.get(),
                             _param_df_yaw_hold.get());
+    _control.setMaxYawRate(_param_df_yawspeed_maxr.get());
+
+    // Set yaw speed PID gains
+    _control.setYawSpeedGains(
+        _param_df_yawspeed_p.get(),
+        _param_df_yawspeed_i.get(),
+        _param_df_yawspeed_d.get()
+    );
 
     // initialize vectors from params and enforce constraints
   }
@@ -395,6 +403,24 @@ PositionControlStates MulticopterPositionControl::set_vehicle_states(
   }
 
   states.yaw = vehicle_local_position.heading;
+
+  // TODO: Calculate yaw_rate from heading derivative or subscribe to vehicle_angular_velocity
+  // For now, use numerical derivative of heading
+  static float prev_heading = vehicle_local_position.heading;
+  static uint64_t prev_timestamp = vehicle_local_position.timestamp;
+
+  if (prev_timestamp > 0 && dt_s > 0.001f) {
+    float heading_diff = vehicle_local_position.heading - prev_heading;
+    // Wrap heading difference to [-pi, pi]
+    while (heading_diff > M_PI_F) heading_diff -= 2.0f * M_PI_F;
+    while (heading_diff < -M_PI_F) heading_diff += 2.0f * M_PI_F;
+    states.yaw_rate = heading_diff / dt_s;
+  } else {
+    states.yaw_rate = 0.0f;
+  }
+
+  prev_heading = vehicle_local_position.heading;
+  prev_timestamp = vehicle_local_position.timestamp;
 
   return states;
 }
