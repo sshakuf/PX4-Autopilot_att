@@ -77,6 +77,7 @@
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/vehicle_land_detected.h>
+#include <uORB/topics/vehicle_angular_velocity.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
@@ -120,6 +121,7 @@ private:
 	uORB::Subscription _hover_thrust_estimate_sub{ORB_ID(hover_thrust_estimate)};
 	uORB::Subscription _manual_control_setpoint_sub{ORB_ID(manual_control_setpoint)};
 	uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
+	uORB::Subscription _vehicle_angular_velocity_sub{ORB_ID(vehicle_angular_velocity)};
 	uORB::Subscription _vehicle_constraints_sub{ORB_ID(vehicle_constraints)};
 	uORB::Subscription _vehicle_control_mode_sub{ORB_ID(vehicle_control_mode)};
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
@@ -204,6 +206,7 @@ private:
 		(ParamInt<px4::params::DF_YAW_HOLD_EN>) _param_df_yaw_hold_en,
 		(ParamFloat<px4::params::DF_YAW_HOLD>) _param_df_yaw_hold,
 		(ParamFloat<px4::params::DF_YAWSPEED_MAXR>) _param_df_yawspeed_maxr,
+		(ParamFloat<px4::params::DF_YAW_ACC_MAX>) _param_df_yaw_acc_max,
 		(ParamFloat<px4::params::DF_YAWSPEED_P>) _param_df_yawspeed_p,
 		(ParamFloat<px4::params::DF_YAWSPEED_I>) _param_df_yawspeed_i,
 		(ParamFloat<px4::params::DF_YAWSPEED_D>) _param_df_yawspeed_d

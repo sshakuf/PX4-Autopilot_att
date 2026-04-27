@@ -80,10 +80,26 @@ PARAM_DEFINE_FLOAT(DF_YAW_HOLD, 0.0f);
 PARAM_DEFINE_FLOAT(DF_YAWSPEED_MAXR, 90.0f);
 
 /**
- * Yaw speed proportional gain
+ * Maximum yaw acceleration for keep heading
  *
- * Proportional gain for yaw speed control when keep heading is enabled.
- * Higher values result in faster response to yaw rate errors.
+ * Maximum yaw-rate change allowed by the keep-heading profile.
+ * This is also used to compute stopping distance, so lower values
+ * begin braking earlier for high-inertia payloads.
+ *
+ * @unit deg/s^2
+ * @min 5.0
+ * @max 720.0
+ * @decimal 1
+ * @increment 5.0
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAW_ACC_MAX, 90.0f);
+
+/**
+ * Heading to yaw-rate gain
+ *
+ * Converts wrapped heading error to yaw-rate setpoint before braking,
+ * yaw-rate, and acceleration limits are applied.
  *
  * @min 0.0
  * @max 5.0
@@ -94,29 +110,29 @@ PARAM_DEFINE_FLOAT(DF_YAWSPEED_MAXR, 90.0f);
 PARAM_DEFINE_FLOAT(DF_YAWSPEED_P, 1.0f);
 
 /**
- * Yaw speed integral gain
+ * Heading integral gain
  *
- * Integral gain for yaw speed control when keep heading is enabled.
- * Eliminates steady-state errors in yaw rate tracking.
+ * Slow trim on heading error. Keep this small; the yaw-rate integral
+ * contribution is internally limited to avoid windup.
  *
  * @min 0.0
- * @max 2.0
+ * @max 1.0
  * @decimal 2
  * @increment 0.01
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAWSPEED_I, 0.1f);
+PARAM_DEFINE_FLOAT(DF_YAWSPEED_I, 0.05f);
 
 /**
- * Yaw speed derivative gain
+ * Yaw-rate damping gain
  *
- * Derivative gain for yaw speed control when keep heading is enabled.
- * Dampens oscillations and improves stability.
+ * Subtracts measured yaw rate from the heading profile. Higher values
+ * command earlier braking, but too much can make heading response sluggish.
  *
  * @min 0.0
- * @max 1.0
+ * @max 2.0
  * @decimal 3
  * @increment 0.005
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAWSPEED_D, 0.05f);
+PARAM_DEFINE_FLOAT(DF_YAWSPEED_D, 0.30f);

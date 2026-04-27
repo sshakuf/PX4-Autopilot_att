@@ -83,6 +83,12 @@ void PositionControl::updateHoverThrust(const float hover_thrust_new) {
 }
 
 void PositionControl::setKeepHeading(bool enable, float heading_deg) {
+  if (!enable || !_keep_heading_enabled) {
+    _yawspeed_integral = 0.0f;
+    _yawspeed_error_prev = 0.0f;
+    _yawspeed_sp_prev = 0.0f;
+  }
+
   _keep_heading_enabled = enable;
   // Convert degrees to radians and normalize to [-pi, pi]
   // Heading is in NED coordinates: 0° = North, 90° = East, 180° = South, -90°/270° = West
@@ -92,6 +98,10 @@ void PositionControl::setKeepHeading(bool enable, float heading_deg) {
 
 void PositionControl::setMaxYawRate(float max_yaw_rate_deg_s) {
   _max_yaw_rate = math::radians(max_yaw_rate_deg_s);
+}
+
+void PositionControl::setMaxYawAcceleration(float max_yaw_accel_deg_s2) {
+  _max_yaw_accel = math::radians(max_yaw_accel_deg_s2);
 }
 
 void PositionControl::setYawSpeedGains(float P, float I, float D) {
@@ -127,55 +137,61 @@ bool PositionControl::update(const float dt) {
     if (_keep_heading_enabled) {
       _yaw_sp = _keep_heading_target;
 
-      // Outer loop: Heading error to desired yaw speed
-      float heading_error = _keep_heading_target - _yaw;
-      heading_error = wrap_pi(heading_error);
+      const float dt_limited = math::constrain(dt, 0.002f, 0.04f);
+      const float max_yaw_rate = math::max(_max_yaw_rate, math::radians(1.0f));
+      const float max_yaw_accel = math::max(_max_yaw_accel, math::radians(1.0f));
 
-      // Proportional gain for heading to yaw speed conversion
-      const float heading_p_gain = 2.0f;  // rad/s per rad of error
-      float desired_yaw_speed = heading_p_gain * heading_error;
+      const float heading_error = wrap_pi(_keep_heading_target - _yaw);
+      const float abs_heading_error = fabsf(heading_error);
+      const float direction = heading_error >= 0.0f ? 1.0f : -1.0f;
 
-      // Limit desired yaw speed using configurable parameter
-      desired_yaw_speed = math::constrain(desired_yaw_speed,
-                                         -_max_yaw_rate,
-                                         _max_yaw_rate);
+      // Braking profile: maximum rate that can still stop inside the remaining angle.
+      const float stopping_limited_rate = sqrtf(2.0f * max_yaw_accel * abs_heading_error);
+      const float heading_rate = _gain_yawspeed_p * abs_heading_error;
+      float yaw_rate_sp = direction * math::min(max_yaw_rate, math::min(heading_rate, stopping_limited_rate));
 
-      // Inner loop: PID control on yaw speed error
-      float yawspeed_error = desired_yaw_speed - _yaw_rate;
+      if (_gain_yawspeed_i > FLT_EPSILON) {
+        const float integral_yaw_rate_limit = 0.25f * max_yaw_rate;
+        const float integral_limit = integral_yaw_rate_limit / _gain_yawspeed_i;
+        const float yaw_rate_i = _gain_yawspeed_i * _yawspeed_integral;
+        const float yaw_rate_unsaturated = yaw_rate_sp + yaw_rate_i - _gain_yawspeed_d * _yaw_rate;
+        const bool saturated = fabsf(yaw_rate_unsaturated) >= max_yaw_rate;
 
-      // Proportional term
-      float yawspeed_p = _gain_yawspeed_p * yawspeed_error;
+        // Integrate only when not driving deeper into yaw-rate saturation.
+        if (!saturated || (heading_error * yaw_rate_unsaturated < 0.0f)) {
+          _yawspeed_integral = math::constrain(_yawspeed_integral + heading_error * dt_limited,
+                                               -integral_limit, integral_limit);
+        }
 
-      // Integral term with anti-windup
-      _yawspeed_integral += yawspeed_error * dt;
+        yaw_rate_sp += _gain_yawspeed_i * _yawspeed_integral;
 
-      // Anti-windup: limit integral
-      const float integral_limit = math::radians(45.0f);  // 45 deg/s max from integral
-      _yawspeed_integral = math::constrain(_yawspeed_integral,
-                                          -integral_limit / _gain_yawspeed_i,
-                                          integral_limit / _gain_yawspeed_i);
-
-      float yawspeed_i = _gain_yawspeed_i * _yawspeed_integral;
-
-      // Derivative term
-      float yawspeed_d = _gain_yawspeed_d * (yawspeed_error - _yawspeed_error_prev) / dt;
-      _yawspeed_error_prev = yawspeed_error;
-
-      // Combine PID terms
-      _yawspeed_sp = yawspeed_p + yawspeed_i + yawspeed_d;
-
-      // Final rate limiting using configurable parameter
-      _yawspeed_sp = math::constrain(_yawspeed_sp, -_max_yaw_rate, _max_yaw_rate);
-
-      // Reset integral when heading error is very small (achieved target)
-      if (fabsf(heading_error) < math::radians(1.0f)) {
-        _yawspeed_integral *= 0.95f;  // Slowly decay integral near target
+      } else {
+        _yawspeed_integral = 0.0f;
       }
+
+      // Damping makes the commanded rate go below the current rate before the
+      // target, so the downstream rate controller produces reverse yaw torque.
+      yaw_rate_sp -= _gain_yawspeed_d * _yaw_rate;
+
+      if ((abs_heading_error < math::radians(0.5f)) && (fabsf(_yaw_rate) < math::radians(1.0f))) {
+        yaw_rate_sp = 0.0f;
+        _yawspeed_integral *= 0.95f;
+      }
+
+      yaw_rate_sp = math::constrain(yaw_rate_sp, -max_yaw_rate, max_yaw_rate);
+
+      const float max_delta_yaw_rate = max_yaw_accel * dt_limited;
+      _yawspeed_sp = _yawspeed_sp_prev + math::constrain(yaw_rate_sp - _yawspeed_sp_prev,
+                                                         -max_delta_yaw_rate, max_delta_yaw_rate);
+      _yawspeed_sp = math::constrain(_yawspeed_sp, -max_yaw_rate, max_yaw_rate);
+      _yawspeed_sp_prev = _yawspeed_sp;
+      _yawspeed_error_prev = yaw_rate_sp - _yaw_rate;
 
     } else {
       // Reset PID state when not in keep heading mode
       _yawspeed_integral = 0.0f;
       _yawspeed_error_prev = 0.0f;
+      _yawspeed_sp_prev = 0.0f;
 
       _yawspeed_sp = PX4_ISFINITE(_yawspeed_sp) ? _yawspeed_sp : 0.f;
       _yaw_sp = PX4_ISFINITE(_yaw_sp)

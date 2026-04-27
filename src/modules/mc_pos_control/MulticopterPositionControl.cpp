@@ -320,6 +320,7 @@ void MulticopterPositionControl::parameters_update(bool force) {
     _control.setKeepHeading(_param_df_yaw_hold_en.get(),
                             _param_df_yaw_hold.get());
     _control.setMaxYawRate(_param_df_yawspeed_maxr.get());
+    _control.setMaxYawAcceleration(_param_df_yaw_acc_max.get());
 
     // Set yaw speed PID gains
     _control.setYawSpeedGains(
@@ -404,8 +405,16 @@ PositionControlStates MulticopterPositionControl::set_vehicle_states(
 
   states.yaw = vehicle_local_position.heading;
 
-  // TODO: Calculate yaw_rate from heading derivative or subscribe to vehicle_angular_velocity
-  // For now, use numerical derivative of heading
+  vehicle_angular_velocity_s angular_velocity{};
+
+  if (_vehicle_angular_velocity_sub.copy(&angular_velocity) &&
+      hrt_elapsed_time(&angular_velocity.timestamp_sample) < 100_ms &&
+      PX4_ISFINITE(angular_velocity.xyz[2])) {
+    states.yaw_rate = angular_velocity.xyz[2];
+    return states;
+  }
+
+  // Fallback only; the gyro yaw rate above is preferred for braking.
   static float prev_heading = vehicle_local_position.heading;
   static uint64_t prev_timestamp = vehicle_local_position.timestamp;
 
