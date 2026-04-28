@@ -144,23 +144,37 @@ bool PositionControl::update(const float dt) {
       const float heading_error = wrap_pi(_keep_heading_target - _yaw);
       const float abs_heading_error = fabsf(heading_error);
       const float direction = heading_error >= 0.0f ? 1.0f : -1.0f;
+      const bool rotating_towards_target = _yaw_rate * direction > 0.0f;
+      const bool fine_heading_hold = abs_heading_error < math::radians(12.0f);
 
       // Braking profile: maximum rate that can still stop inside the remaining angle.
       const float stopping_limited_rate = sqrtf(2.0f * max_yaw_accel * abs_heading_error);
       const float heading_rate = _gain_yawspeed_p * abs_heading_error;
-      float yaw_rate_sp = direction * math::min(max_yaw_rate, math::min(heading_rate, stopping_limited_rate));
+      const float profile_yaw_rate_sp = direction * math::min(max_yaw_rate, math::min(heading_rate, stopping_limited_rate));
+      float yaw_rate_sp = profile_yaw_rate_sp;
+
+      if (fine_heading_hold) {
+        const float fine_heading_rate = math::constrain(_gain_yawspeed_p * heading_error,
+                                                        -math::radians(20.0f),
+                                                        math::radians(20.0f));
+
+        yaw_rate_sp = fine_heading_rate - _gain_yawspeed_d * _yaw_rate;
+      }
 
       if (_gain_yawspeed_i > FLT_EPSILON) {
-        const float integral_yaw_rate_limit = 0.25f * max_yaw_rate;
+        const float integral_yaw_rate_limit = fine_heading_hold ? math::radians(8.0f) : 0.25f * max_yaw_rate;
         const float integral_limit = integral_yaw_rate_limit / _gain_yawspeed_i;
         const float yaw_rate_i = _gain_yawspeed_i * _yawspeed_integral;
-        const float yaw_rate_unsaturated = yaw_rate_sp + yaw_rate_i - _gain_yawspeed_d * _yaw_rate;
+        const float yaw_rate_unsaturated = yaw_rate_sp + yaw_rate_i;
         const bool saturated = fabsf(yaw_rate_unsaturated) >= max_yaw_rate;
 
         // Integrate only when not driving deeper into yaw-rate saturation.
-        if (!saturated || (heading_error * yaw_rate_unsaturated < 0.0f)) {
+        if (fine_heading_hold && (!saturated || (heading_error * yaw_rate_unsaturated < 0.0f))) {
           _yawspeed_integral = math::constrain(_yawspeed_integral + heading_error * dt_limited,
                                                -integral_limit, integral_limit);
+
+        } else if (!fine_heading_hold) {
+          _yawspeed_integral *= 0.98f;
         }
 
         yaw_rate_sp += _gain_yawspeed_i * _yawspeed_integral;
@@ -169,9 +183,13 @@ bool PositionControl::update(const float dt) {
         _yawspeed_integral = 0.0f;
       }
 
-      // Damping makes the commanded rate go below the current rate before the
-      // target, so the downstream rate controller produces reverse yaw torque.
-      yaw_rate_sp -= _gain_yawspeed_d * _yaw_rate;
+      // Brake only when the vehicle is already rotating faster than the
+      // stopping profile allows. Do not damp normal motion toward the target.
+      const float excess_yaw_rate = fabsf(_yaw_rate) - fabsf(profile_yaw_rate_sp);
+
+      if (!fine_heading_hold && rotating_towards_target && excess_yaw_rate > 0.0f) {
+        yaw_rate_sp -= direction * _gain_yawspeed_d * excess_yaw_rate;
+      }
 
       if ((abs_heading_error < math::radians(0.5f)) && (fabsf(_yaw_rate) < math::radians(1.0f))) {
         yaw_rate_sp = 0.0f;
@@ -180,9 +198,17 @@ bool PositionControl::update(const float dt) {
 
       yaw_rate_sp = math::constrain(yaw_rate_sp, -max_yaw_rate, max_yaw_rate);
 
-      const float max_delta_yaw_rate = max_yaw_accel * dt_limited;
-      _yawspeed_sp = _yawspeed_sp_prev + math::constrain(yaw_rate_sp - _yawspeed_sp_prev,
-                                                         -max_delta_yaw_rate, max_delta_yaw_rate);
+      const bool setpoint_moves_towards_target_faster = yaw_rate_sp * direction > _yawspeed_sp_prev * direction;
+
+      if (!fine_heading_hold && setpoint_moves_towards_target_faster && !(rotating_towards_target && excess_yaw_rate > 0.0f)) {
+        const float max_delta_yaw_rate = max_yaw_accel * dt_limited;
+        _yawspeed_sp = _yawspeed_sp_prev + math::constrain(yaw_rate_sp - _yawspeed_sp_prev,
+                                                           -max_delta_yaw_rate, max_delta_yaw_rate);
+
+      } else {
+        _yawspeed_sp = yaw_rate_sp;
+      }
+
       _yawspeed_sp = math::constrain(_yawspeed_sp, -max_yaw_rate, max_yaw_rate);
       _yawspeed_sp_prev = _yawspeed_sp;
       _yawspeed_error_prev = yaw_rate_sp - _yaw_rate;

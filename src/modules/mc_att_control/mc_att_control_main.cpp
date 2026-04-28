@@ -400,8 +400,13 @@ MulticopterAttitudeControl::Run()
 		const bool is_hovering = (_vehicle_type_rotary_wing && !_vtol_in_transition_mode);
 		const bool is_tailsitter_transition = (_vtol_tailsitter && _vtol_in_transition_mode);
 
+		const bool direct_position_rates_active = _vehicle_control_mode.flag_control_position_enabled
+				|| _vehicle_control_mode.flag_control_velocity_enabled
+				|| _vehicle_control_mode.flag_control_altitude_enabled;
+
 		const bool run_att_ctrl = _vehicle_control_mode.flag_control_attitude_enabled
-					  && (is_hovering || is_tailsitter_transition);
+					  && (is_hovering || is_tailsitter_transition)
+					  && !direct_position_rates_active;
 
 		// [DBG5] Log attitude controller activation flags at ~1Hz
 		static int att_mode_counter = 0;

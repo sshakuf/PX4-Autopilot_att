@@ -283,13 +283,13 @@ private:
 	// Keep heading feature
 	bool _keep_heading_enabled{false}; /**< enable keep heading feature */
 	float _keep_heading_target{0.0f}; /**< target heading in radians */
-	float _max_yaw_rate{math::radians(90.0f)}; /**< maximum yaw rate in rad/s */
-	float _max_yaw_accel{math::radians(90.0f)}; /**< maximum yaw acceleration in rad/s^2 */
+	float _max_yaw_rate{math::radians(20.0f)}; /**< maximum yaw rate in rad/s */
+	float _max_yaw_accel{math::radians(10.0f)}; /**< maximum yaw acceleration in rad/s^2 */
 
 	// Keep-heading yaw-rate shaping gains
-	float _gain_yawspeed_p{1.0f}; /**< heading error to yaw-rate gain */
-	float _gain_yawspeed_i{0.05f}; /**< heading integral to yaw-rate gain */
-	float _gain_yawspeed_d{0.3f}; /**< yaw-rate damping gain */
+	float _gain_yawspeed_p{0.8f}; /**< heading error to yaw-rate gain */
+	float _gain_yawspeed_i{0.08f}; /**< heading integral to yaw-rate gain */
+	float _gain_yawspeed_d{0.8f}; /**< yaw-rate damping gain */
 
 	// Keep-heading yaw-rate shaping state
 	float _yawspeed_error_prev{0.0f}; /**< kept for API compatibility with older tuning code */

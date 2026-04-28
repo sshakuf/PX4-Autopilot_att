@@ -71,13 +71,13 @@ PARAM_DEFINE_FLOAT(DF_YAW_HOLD, 0.0f);
  * Lower values provide smoother rotation but slower heading acquisition.
  *
  * @unit deg/s
- * @min 10.0
- * @max 180.0
+ * @min 1.0
+ * @max 90.0
  * @decimal 1
  * @increment 5.0
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAWSPEED_MAXR, 90.0f);
+PARAM_DEFINE_FLOAT(DF_YAWSPEED_MAXR, 20.0f);
 
 /**
  * Maximum yaw acceleration for keep heading
@@ -87,13 +87,13 @@ PARAM_DEFINE_FLOAT(DF_YAWSPEED_MAXR, 90.0f);
  * begin braking earlier for high-inertia payloads.
  *
  * @unit deg/s^2
- * @min 5.0
- * @max 720.0
+ * @min 1.0
+ * @max 180.0
  * @decimal 1
  * @increment 5.0
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAW_ACC_MAX, 90.0f);
+PARAM_DEFINE_FLOAT(DF_YAW_ACC_MAX, 10.0f);
 
 /**
  * Heading to yaw-rate gain
@@ -107,7 +107,7 @@ PARAM_DEFINE_FLOAT(DF_YAW_ACC_MAX, 90.0f);
  * @increment 0.05
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAWSPEED_P, 1.0f);
+PARAM_DEFINE_FLOAT(DF_YAWSPEED_P, 0.8f);
 
 /**
  * Heading integral gain
@@ -121,7 +121,7 @@ PARAM_DEFINE_FLOAT(DF_YAWSPEED_P, 1.0f);
  * @increment 0.01
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAWSPEED_I, 0.05f);
+PARAM_DEFINE_FLOAT(DF_YAWSPEED_I, 0.08f);
 
 /**
  * Yaw-rate damping gain
@@ -135,4 +135,4 @@ PARAM_DEFINE_FLOAT(DF_YAWSPEED_I, 0.05f);
  * @increment 0.005
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAWSPEED_D, 0.30f);
+PARAM_DEFINE_FLOAT(DF_YAWSPEED_D, 0.80f);
