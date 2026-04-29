@@ -209,7 +209,13 @@ private:
 		(ParamFloat<px4::params::DF_YAW_ACC_MAX>) _param_df_yaw_acc_max,
 		(ParamFloat<px4::params::DF_YAWSPEED_P>) _param_df_yawspeed_p,
 		(ParamFloat<px4::params::DF_YAWSPEED_I>) _param_df_yawspeed_i,
-		(ParamFloat<px4::params::DF_YAWSPEED_D>) _param_df_yawspeed_d
+		(ParamFloat<px4::params::DF_YAWSPEED_D>) _param_df_yawspeed_d,
+		(ParamFloat<px4::params::DF_YAW_FINE_ERR>) _param_df_yaw_fine_err,
+		(ParamFloat<px4::params::DF_YAW_FINE_RATE>) _param_df_yaw_fine_rate,
+		(ParamFloat<px4::params::DF_YAW_FINE_P>) _param_df_yaw_fine_p,
+		(ParamFloat<px4::params::DF_YAW_FINE_I>) _param_df_yaw_fine_i,
+		(ParamFloat<px4::params::DF_YAW_FINE_D>) _param_df_yaw_fine_d,
+		(ParamFloat<px4::params::DF_YAW_FINE_ILIM>) _param_df_yaw_fine_ilim
 	);
 
 	math::WelfordMean<float> _sample_interval_s{};

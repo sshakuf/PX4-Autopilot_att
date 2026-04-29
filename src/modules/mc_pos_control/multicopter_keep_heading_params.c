@@ -136,3 +136,87 @@ PARAM_DEFINE_FLOAT(DF_YAWSPEED_I, 0.08f);
  * @group Multicopter Position Control
  */
 PARAM_DEFINE_FLOAT(DF_YAWSPEED_D, 0.80f);
+
+/**
+ * Fine heading hold error threshold
+ *
+ * Heading error below which the keep-heading controller switches from
+ * coarse turn profiling to fine heading hold.
+ *
+ * @unit deg
+ * @min 1.0
+ * @max 45.0
+ * @decimal 1
+ * @increment 1.0
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_ERR, 12.0f);
+
+/**
+ * Fine heading correction rate limit
+ *
+ * Maximum yaw-rate contribution from fine heading error. Yaw-rate damping
+ * can still command more, up to DF_YAWSPEED_MAXR, to brake residual spin.
+ *
+ * @unit deg/s
+ * @min 1.0
+ * @max 90.0
+ * @decimal 1
+ * @increment 1.0
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_RATE, 20.0f);
+
+/**
+ * Fine heading proportional gain
+ *
+ * Converts fine heading error to yaw-rate setpoint near the target heading.
+ *
+ * @min 0.0
+ * @max 5.0
+ * @decimal 2
+ * @increment 0.05
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_P, 1.5f);
+
+/**
+ * Fine heading integral gain
+ *
+ * Removes residual heading offset near the target heading.
+ *
+ * @min 0.0
+ * @max 1.0
+ * @decimal 2
+ * @increment 0.01
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_I, 0.08f);
+
+/**
+ * Fine yaw-rate damping gain
+ *
+ * Applies opposite yaw-rate command near the target heading based on measured
+ * yaw rate.
+ *
+ * @min 0.0
+ * @max 5.0
+ * @decimal 2
+ * @increment 0.05
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_D, 0.80f);
+
+/**
+ * Fine heading integral limit
+ *
+ * Maximum yaw-rate contribution from the fine heading integral.
+ *
+ * @unit deg/s
+ * @min 0.0
+ * @max 30.0
+ * @decimal 1
+ * @increment 1.0
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_ILIM, 8.0f);

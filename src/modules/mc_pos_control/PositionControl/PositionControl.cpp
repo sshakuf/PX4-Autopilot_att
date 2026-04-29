@@ -110,6 +110,16 @@ void PositionControl::setYawSpeedGains(float P, float I, float D) {
   _gain_yawspeed_d = D;
 }
 
+void PositionControl::setFineYawSpeedGains(float error_deg, float rate_limit_deg_s, float P, float I, float D,
+                                           float integral_limit_deg_s) {
+  _fine_yaw_error = math::radians(error_deg);
+  _fine_yaw_rate_limit = math::radians(rate_limit_deg_s);
+  _fine_yawspeed_p = P;
+  _fine_yawspeed_i = I;
+  _fine_yawspeed_d = D;
+  _fine_yawspeed_ilim = math::radians(integral_limit_deg_s);
+}
+
 void PositionControl::setState(const PositionControlStates &states) {
   _pos = states.position;
   _vel = states.velocity;
@@ -145,7 +155,7 @@ bool PositionControl::update(const float dt) {
       const float abs_heading_error = fabsf(heading_error);
       const float direction = heading_error >= 0.0f ? 1.0f : -1.0f;
       const bool rotating_towards_target = _yaw_rate * direction > 0.0f;
-      const bool fine_heading_hold = abs_heading_error < math::radians(12.0f);
+      const bool fine_heading_hold = abs_heading_error < math::max(_fine_yaw_error, math::radians(0.5f));
 
       // Braking profile: maximum rate that can still stop inside the remaining angle.
       const float stopping_limited_rate = sqrtf(2.0f * max_yaw_accel * abs_heading_error);
@@ -154,17 +164,21 @@ bool PositionControl::update(const float dt) {
       float yaw_rate_sp = profile_yaw_rate_sp;
 
       if (fine_heading_hold) {
-        const float fine_heading_rate = math::constrain(_gain_yawspeed_p * heading_error,
-                                                        -math::radians(20.0f),
-                                                        math::radians(20.0f));
+        const float fine_heading_rate_limit = math::min(max_yaw_rate,
+                                                        math::max(_fine_yaw_rate_limit, math::radians(1.0f)));
+        const float fine_heading_rate = math::constrain(_fine_yawspeed_p * heading_error,
+                                                        -fine_heading_rate_limit,
+                                                        fine_heading_rate_limit);
 
-        yaw_rate_sp = fine_heading_rate - _gain_yawspeed_d * _yaw_rate;
+        yaw_rate_sp = fine_heading_rate - _fine_yawspeed_d * _yaw_rate;
       }
 
-      if (_gain_yawspeed_i > FLT_EPSILON) {
-        const float integral_yaw_rate_limit = fine_heading_hold ? math::radians(8.0f) : 0.25f * max_yaw_rate;
-        const float integral_limit = integral_yaw_rate_limit / _gain_yawspeed_i;
-        const float yaw_rate_i = _gain_yawspeed_i * _yawspeed_integral;
+      const float yaw_i_gain = fine_heading_hold ? _fine_yawspeed_i : _gain_yawspeed_i;
+
+      if (yaw_i_gain > FLT_EPSILON) {
+        const float integral_yaw_rate_limit = fine_heading_hold ? _fine_yawspeed_ilim : 0.25f * max_yaw_rate;
+        const float integral_limit = integral_yaw_rate_limit / yaw_i_gain;
+        const float yaw_rate_i = yaw_i_gain * _yawspeed_integral;
         const float yaw_rate_unsaturated = yaw_rate_sp + yaw_rate_i;
         const bool saturated = fabsf(yaw_rate_unsaturated) >= max_yaw_rate;
 
@@ -177,7 +191,7 @@ bool PositionControl::update(const float dt) {
           _yawspeed_integral *= 0.98f;
         }
 
-        yaw_rate_sp += _gain_yawspeed_i * _yawspeed_integral;
+        yaw_rate_sp += yaw_i_gain * _yawspeed_integral;
 
       } else {
         _yawspeed_integral = 0.0f;

@@ -328,6 +328,14 @@ void MulticopterPositionControl::parameters_update(bool force) {
         _param_df_yawspeed_i.get(),
         _param_df_yawspeed_d.get()
     );
+    _control.setFineYawSpeedGains(
+        _param_df_yaw_fine_err.get(),
+        _param_df_yaw_fine_rate.get(),
+        _param_df_yaw_fine_p.get(),
+        _param_df_yaw_fine_i.get(),
+        _param_df_yaw_fine_d.get(),
+        _param_df_yaw_fine_ilim.get()
+    );
 
     // initialize vectors from params and enforce constraints
   }

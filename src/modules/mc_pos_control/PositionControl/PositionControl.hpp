@@ -156,6 +156,18 @@ public:
 	void setYawSpeedGains(float P, float I, float D);
 
 	/**
+	 * Set the fine heading hold parameters used near the target heading
+	 * @param error_deg heading error threshold for fine mode in degrees
+	 * @param rate_limit_deg_s fine mode heading correction rate limit in degrees per second
+	 * @param P fine heading error to yaw-rate gain
+	 * @param I fine heading integral to yaw-rate gain
+	 * @param D fine yaw-rate damping gain
+	 * @param integral_limit_deg_s fine integral yaw-rate contribution limit in degrees per second
+	 */
+	void setFineYawSpeedGains(float error_deg, float rate_limit_deg_s, float P, float I, float D,
+				  float integral_limit_deg_s);
+
+	/**
 	 * Set maximum yaw acceleration for keep heading
 	 * @param max_yaw_accel_deg_s2 Maximum yaw acceleration in degrees per second squared
 	 */
@@ -290,6 +302,13 @@ private:
 	float _gain_yawspeed_p{0.8f}; /**< heading error to yaw-rate gain */
 	float _gain_yawspeed_i{0.08f}; /**< heading integral to yaw-rate gain */
 	float _gain_yawspeed_d{0.8f}; /**< yaw-rate damping gain */
+
+	float _fine_yaw_error{math::radians(12.0f)}; /**< heading error threshold for fine mode */
+	float _fine_yaw_rate_limit{math::radians(20.0f)}; /**< fine mode heading correction yaw-rate limit */
+	float _fine_yawspeed_p{1.0f}; /**< fine heading error to yaw-rate gain */
+	float _fine_yawspeed_i{0.08f}; /**< fine heading integral to yaw-rate gain */
+	float _fine_yawspeed_d{0.8f}; /**< fine yaw-rate damping gain */
+	float _fine_yawspeed_ilim{math::radians(8.0f)}; /**< fine integral yaw-rate contribution limit */
 
 	// Keep-heading yaw-rate shaping state
 	float _yawspeed_error_prev{0.0f}; /**< kept for API compatibility with older tuning code */
