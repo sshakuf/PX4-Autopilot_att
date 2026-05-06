@@ -150,7 +150,7 @@ PARAM_DEFINE_FLOAT(DF_YAWSPEED_D, 0.80f);
  * @increment 1.0
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAW_FINE_ERR, 12.0f);
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_ERR, 25.0f);
 
 /**
  * Fine heading correction rate limit
@@ -165,7 +165,7 @@ PARAM_DEFINE_FLOAT(DF_YAW_FINE_ERR, 12.0f);
  * @increment 1.0
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAW_FINE_RATE, 20.0f);
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_RATE, 35.0f);
 
 /**
  * Fine heading proportional gain
@@ -178,7 +178,7 @@ PARAM_DEFINE_FLOAT(DF_YAW_FINE_RATE, 20.0f);
  * @increment 0.05
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAW_FINE_P, 1.5f);
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_P, 2.0f);
 
 /**
  * Fine heading integral gain
@@ -191,7 +191,7 @@ PARAM_DEFINE_FLOAT(DF_YAW_FINE_P, 1.5f);
  * @increment 0.01
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAW_FINE_I, 0.08f);
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_I, 0.12f);
 
 /**
  * Fine yaw-rate damping gain
@@ -205,7 +205,7 @@ PARAM_DEFINE_FLOAT(DF_YAW_FINE_I, 0.08f);
  * @increment 0.05
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAW_FINE_D, 0.80f);
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_D, 1.20f);
 
 /**
  * Fine heading integral limit
@@ -219,4 +219,50 @@ PARAM_DEFINE_FLOAT(DF_YAW_FINE_D, 0.80f);
  * @increment 1.0
  * @group Multicopter Position Control
  */
-PARAM_DEFINE_FLOAT(DF_YAW_FINE_ILIM, 8.0f);
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_ILIM, 12.0f);
+
+/**
+ * Fine heading braking acceleration estimate
+ *
+ * Estimated yaw deceleration that the controller can achieve with the current
+ * payload. This is used to compute yaw stopping angle from measured yaw rate.
+ * Lower values make the controller brake earlier.
+ *
+ * @unit deg/s^2
+ * @min 1.0
+ * @max 360.0
+ * @decimal 1
+ * @increment 5.0
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_ACC, 20.0f);
+
+/**
+ * Fine heading tolerance
+ *
+ * Heading error considered acceptable in fine heading hold. Outside this
+ * tolerance the controller can apply a minimum correction yaw rate.
+ *
+ * @unit deg
+ * @min 0.5
+ * @max 10.0
+ * @decimal 1
+ * @increment 0.5
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_TOL, 3.0f);
+
+/**
+ * Fine heading minimum correction rate
+ *
+ * Minimum yaw-rate setpoint commanded when the vehicle is nearly stopped but
+ * still outside DF_YAW_FINE_TOL. This helps overcome static torque deadband.
+ *
+ * @unit deg/s
+ * @min 0.0
+ * @max 45.0
+ * @decimal 1
+ * @increment 1.0
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_YAW_FINE_MINR, 12.0f);

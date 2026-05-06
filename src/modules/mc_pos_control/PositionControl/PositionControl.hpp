@@ -163,9 +163,13 @@ public:
 	 * @param I fine heading integral to yaw-rate gain
 	 * @param D fine yaw-rate damping gain
 	 * @param integral_limit_deg_s fine integral yaw-rate contribution limit in degrees per second
+	 * @param brake_accel_deg_s2 estimated fine-mode yaw braking acceleration in degrees per second squared
+	 * @param tolerance_deg acceptable fine heading error in degrees
+	 * @param min_rate_deg_s minimum fine correction yaw rate outside tolerance in degrees per second
 	 */
 	void setFineYawSpeedGains(float error_deg, float rate_limit_deg_s, float P, float I, float D,
-				  float integral_limit_deg_s);
+				  float integral_limit_deg_s, float brake_accel_deg_s2, float tolerance_deg,
+				  float min_rate_deg_s);
 
 	/**
 	 * Set maximum yaw acceleration for keep heading
@@ -275,7 +279,6 @@ private:
 	float _lim_tilt{}; ///< Maximum tilt from level the output attitude is allowed to have
 
 	float _hover_thrust{}; ///< Thrust [HOVER_THRUST_MIN, HOVER_THRUST_MAX] with which the vehicle hovers not accelerating down or up with level orientation
-	bool _decouple_horizontal_and_vertical_acceleration{true}; ///< Ignore vertical acceleration setpoint to remove its effect on the tilt setpoint
 
 	// States
 	matrix::Vector3f _pos; /**< current position */
@@ -303,12 +306,15 @@ private:
 	float _gain_yawspeed_i{0.08f}; /**< heading integral to yaw-rate gain */
 	float _gain_yawspeed_d{0.8f}; /**< yaw-rate damping gain */
 
-	float _fine_yaw_error{math::radians(12.0f)}; /**< heading error threshold for fine mode */
-	float _fine_yaw_rate_limit{math::radians(20.0f)}; /**< fine mode heading correction yaw-rate limit */
-	float _fine_yawspeed_p{1.0f}; /**< fine heading error to yaw-rate gain */
-	float _fine_yawspeed_i{0.08f}; /**< fine heading integral to yaw-rate gain */
-	float _fine_yawspeed_d{0.8f}; /**< fine yaw-rate damping gain */
-	float _fine_yawspeed_ilim{math::radians(8.0f)}; /**< fine integral yaw-rate contribution limit */
+	float _fine_yaw_error{math::radians(25.0f)}; /**< heading error threshold for fine mode */
+	float _fine_yaw_rate_limit{math::radians(35.0f)}; /**< fine mode heading correction yaw-rate limit */
+	float _fine_yawspeed_p{2.0f}; /**< fine heading error to yaw-rate gain */
+	float _fine_yawspeed_i{0.12f}; /**< fine heading integral to yaw-rate gain */
+	float _fine_yawspeed_d{1.2f}; /**< fine yaw-rate damping gain */
+	float _fine_yawspeed_ilim{math::radians(12.0f)}; /**< fine integral yaw-rate contribution limit */
+	float _fine_yaw_brake_accel{math::radians(20.0f)}; /**< estimated fine-mode yaw braking acceleration */
+	float _fine_yaw_tolerance{math::radians(3.0f)}; /**< acceptable fine heading error */
+	float _fine_yaw_min_rate{math::radians(12.0f)}; /**< minimum fine correction yaw rate outside tolerance */
 
 	// Keep-heading yaw-rate shaping state
 	float _yawspeed_error_prev{0.0f}; /**< kept for API compatibility with older tuning code */

@@ -215,7 +215,10 @@ private:
 		(ParamFloat<px4::params::DF_YAW_FINE_P>) _param_df_yaw_fine_p,
 		(ParamFloat<px4::params::DF_YAW_FINE_I>) _param_df_yaw_fine_i,
 		(ParamFloat<px4::params::DF_YAW_FINE_D>) _param_df_yaw_fine_d,
-		(ParamFloat<px4::params::DF_YAW_FINE_ILIM>) _param_df_yaw_fine_ilim
+		(ParamFloat<px4::params::DF_YAW_FINE_ILIM>) _param_df_yaw_fine_ilim,
+		(ParamFloat<px4::params::DF_YAW_FINE_ACC>) _param_df_yaw_fine_acc,
+		(ParamFloat<px4::params::DF_YAW_FINE_TOL>) _param_df_yaw_fine_tol,
+		(ParamFloat<px4::params::DF_YAW_FINE_MINR>) _param_df_yaw_fine_minr
 	);
 
 	math::WelfordMean<float> _sample_interval_s{};
