@@ -397,13 +397,13 @@ bool PositionControl::_inputValid() {
 
   // DF_POS_RELAX: when acceleration setpoints are valid, allow running without
   // estimator position/velocity (sticks -> acc_sp -> thrust, feedforward only)
-  if (_position_relaxed && PX4_ISFINITE(_acc_sp(0)) && PX4_ISFINITE(_acc_sp(1))) {
-    static int dbg_valid_cnt = 0;
-    if ((++dbg_valid_cnt % 100) == 0) {
-      PX4_INFO("[DBG_POS] PosCtrl: valid=1 (relaxed) acc_sp[%.3f,%.3f]", (double)_acc_sp(0), (double)_acc_sp(1));
-    }
-    return valid;
-  }
+//   if (_position_relaxed && PX4_ISFINITE(_acc_sp(0)) && PX4_ISFINITE(_acc_sp(1))) {
+//     static int dbg_valid_cnt = 0;
+//     if ((++dbg_valid_cnt % 100) == 0) {
+//       PX4_INFO("[DBG_POS] PosCtrl: valid=1 (relaxed) acc_sp[%.3f,%.3f]", (double)_acc_sp(0), (double)_acc_sp(1));
+//     }
+//     return valid;
+//   }
 
   // For each controlled horizontal state the estimate has to be valid
   for (int i = 0; i <= 1; i++) {
@@ -416,12 +416,12 @@ bool PositionControl::_inputValid() {
     }
   }
 
-  static int dbg_invalid_cnt = 0;
-  if (!valid && (++dbg_invalid_cnt % 100) == 0) {
-    PX4_WARN("[DBG_POS] PosCtrl: valid=0 relaxed=%d acc=[%.3f,%.3f] pos=[%.1f,%.1f] vel=[%.1f,%.1f]",
-             _position_relaxed, (double)_acc_sp(0), (double)_acc_sp(1),
-             (double)_pos(0), (double)_pos(1), (double)_vel(0), (double)_vel(1));
-  }
+//   static int dbg_invalid_cnt = 0;
+//   if (!valid && (++dbg_invalid_cnt % 100) == 0) {
+//     PX4_WARN("[DBG_POS] PosCtrl: valid=0 relaxed=%d acc=[%.3f,%.3f] pos=[%.1f,%.1f] vel=[%.1f,%.1f]",
+//              _position_relaxed, (double)_acc_sp(0), (double)_acc_sp(1),
+//              (double)_pos(0), (double)_pos(1), (double)_vel(0), (double)_vel(1));
+//   }
   return valid;
 }
 

@@ -197,28 +197,28 @@ MulticopterAttitudeControl::generate_attitude_setpoint(const Quatf &q, float dt)
 
 	attitude_setpoint.thrust_body[2] = -throttle_curve(_manual_control_setpoint.throttle);
 
-	// Debug logging for manual control and attitude setpoint (every 50 cycles = ~0.5sec)
-	static int manual_att_counter = 0;
-	if (++manual_att_counter >= 50) {
-		manual_att_counter = 0;
-		// Convert quaternions to Euler angles for readability
-		matrix::Eulerf euler_current(q);
-		matrix::Eulerf euler_sp(q_sp);
-		PX4_INFO("[MANUAL_IN] roll:%.3f pitch:%.3f yaw:%.3f throttle:%.3f",
-			 (double)_manual_control_setpoint.roll,
-			 (double)_manual_control_setpoint.pitch,
-			 (double)_manual_control_setpoint.yaw,
-			 (double)_manual_control_setpoint.throttle);
-		PX4_INFO("[ATT_CURRENT] roll:%.1f° pitch:%.1f° yaw:%.1f°",
-			 (double)math::degrees(euler_current.phi()),
-			 (double)math::degrees(euler_current.theta()),
-			 (double)math::degrees(euler_current.psi()));
-		PX4_INFO("[ATT_SP] roll:%.1f° pitch:%.1f° yaw:%.1f° thrust_z:%.3f",
-			 (double)math::degrees(euler_sp.phi()),
-			 (double)math::degrees(euler_sp.theta()),
-			 (double)math::degrees(euler_sp.psi()),
-			 (double)attitude_setpoint.thrust_body[2]);
-	}
+	// // Debug logging for manual control and attitude setpoint (every 50 cycles = ~0.5sec)
+	// static int manual_att_counter = 0;
+	// if (++manual_att_counter >= 50) {
+	// 	manual_att_counter = 0;
+	// 	// Convert quaternions to Euler angles for readability
+	// 	matrix::Eulerf euler_current(q);
+	// 	matrix::Eulerf euler_sp(q_sp);
+	// 	PX4_INFO("[MANUAL_IN] roll:%.3f pitch:%.3f yaw:%.3f throttle:%.3f",
+	// 		 (double)_manual_control_setpoint.roll,
+	// 		 (double)_manual_control_setpoint.pitch,
+	// 		 (double)_manual_control_setpoint.yaw,
+	// 		 (double)_manual_control_setpoint.throttle);
+	// 	PX4_INFO("[ATT_CURRENT] roll:%.1f° pitch:%.1f° yaw:%.1f°",
+	// 		 (double)math::degrees(euler_current.phi()),
+	// 		 (double)math::degrees(euler_current.theta()),
+	// 		 (double)math::degrees(euler_current.psi()));
+	// 	PX4_INFO("[ATT_SP] roll:%.1f° pitch:%.1f° yaw:%.1f° thrust_z:%.3f",
+	// 		 (double)math::degrees(euler_sp.phi()),
+	// 		 (double)math::degrees(euler_sp.theta()),
+	// 		 (double)math::degrees(euler_sp.psi()),
+	// 		 (double)attitude_setpoint.thrust_body[2]);
+	// }
 
 	attitude_setpoint.timestamp = hrt_absolute_time();
 	_vehicle_attitude_setpoint_pub.publish(attitude_setpoint);
@@ -408,19 +408,19 @@ MulticopterAttitudeControl::Run()
 					  && (is_hovering || is_tailsitter_transition)
 					  && !direct_position_rates_active;
 
-		// [DBG5] Log attitude controller activation flags at ~1Hz
-		static int att_mode_counter = 0;
-		if (++att_mode_counter >= 100) {
-			att_mode_counter = 0;
-			PX4_INFO("[DBG5_ATT] run=%d att_en=%d hovering=%d manual=%d pos_ctrl=%d vel_ctrl=%d alt_ctrl=%d",
-				 (int)run_att_ctrl,
-				 (int)_vehicle_control_mode.flag_control_attitude_enabled,
-				 (int)is_hovering,
-				 (int)_vehicle_control_mode.flag_control_manual_enabled,
-				 (int)_vehicle_control_mode.flag_control_position_enabled,
-				 (int)_vehicle_control_mode.flag_control_velocity_enabled,
-				 (int)_vehicle_control_mode.flag_control_altitude_enabled);
-		}
+		// // [DBG5] Log attitude controller activation flags at ~1Hz
+		// static int att_mode_counter = 0;
+		// if (++att_mode_counter >= 100) {
+		// 	att_mode_counter = 0;
+		// 	PX4_INFO("[DBG5_ATT] run=%d att_en=%d hovering=%d manual=%d pos_ctrl=%d vel_ctrl=%d alt_ctrl=%d",
+		// 		 (int)run_att_ctrl,
+		// 		 (int)_vehicle_control_mode.flag_control_attitude_enabled,
+		// 		 (int)is_hovering,
+		// 		 (int)_vehicle_control_mode.flag_control_manual_enabled,
+		// 		 (int)_vehicle_control_mode.flag_control_position_enabled,
+		// 		 (int)_vehicle_control_mode.flag_control_velocity_enabled,
+		// 		 (int)_vehicle_control_mode.flag_control_altitude_enabled);
+		// }
 
 		if (run_att_ctrl) {
 			// Generate the attitude setpoint from stick inputs if we are in Manual/Stabilized mode
@@ -449,16 +449,16 @@ MulticopterAttitudeControl::Run()
 					_thrust_setpoint_body = Vector3f(vehicle_attitude_setpoint.thrust_body);
 					_last_attitude_setpoint = vehicle_attitude_setpoint.timestamp;
 
-					// [DBG5] Log attitude setpoint received from pos controller at ~1Hz
-					static int att_sp_rx_counter = 0;
-					if (++att_sp_rx_counter >= 100) {
-						att_sp_rx_counter = 0;
-						PX4_INFO("[DBG5_ATT] att_sp recv: thrust_body[%.3f,%.3f,%.3f] yaw_rate=%.3f",
-							 (double)vehicle_attitude_setpoint.thrust_body[0],
-							 (double)vehicle_attitude_setpoint.thrust_body[1],
-							 (double)vehicle_attitude_setpoint.thrust_body[2],
-							 (double)vehicle_attitude_setpoint.yaw_sp_move_rate);
-					}
+					// // [DBG5] Log attitude setpoint received from pos controller at ~1Hz
+					// static int att_sp_rx_counter = 0;
+					// if (++att_sp_rx_counter >= 100) {
+					// 	att_sp_rx_counter = 0;
+					// 	PX4_INFO("[DBG5_ATT] att_sp recv: thrust_body[%.3f,%.3f,%.3f] yaw_rate=%.3f",
+					// 		 (double)vehicle_attitude_setpoint.thrust_body[0],
+					// 		 (double)vehicle_attitude_setpoint.thrust_body[1],
+					// 		 (double)vehicle_attitude_setpoint.thrust_body[2],
+					// 		 (double)vehicle_attitude_setpoint.yaw_sp_move_rate);
+					// }
 				}
 			}
 
@@ -507,18 +507,18 @@ MulticopterAttitudeControl::Run()
 
 			_vehicle_rates_setpoint_pub.publish(rates_setpoint);
 
-			// [DBG5] Log rates setpoint published to rate controller at ~1Hz
-			static int rates_pub_counter = 0;
-			if (++rates_pub_counter >= 100) {
-				rates_pub_counter = 0;
-				PX4_INFO("[DBG5_ATT] rates_sp pub: thrust[%.3f,%.3f,%.3f] rates_rpy[%.3f,%.3f,%.3f]",
-					 (double)rates_setpoint.thrust_body[0],
-					 (double)rates_setpoint.thrust_body[1],
-					 (double)rates_setpoint.thrust_body[2],
-					 (double)rates_setpoint.roll,
-					 (double)rates_setpoint.pitch,
-					 (double)rates_setpoint.yaw);
-			}
+			// // [DBG5] Log rates setpoint published to rate controller at ~1Hz
+			// static int rates_pub_counter = 0;
+			// if (++rates_pub_counter >= 100) {
+			// 	rates_pub_counter = 0;
+			// 	PX4_INFO("[DBG5_ATT] rates_sp pub: thrust[%.3f,%.3f,%.3f] rates_rpy[%.3f,%.3f,%.3f]",
+			// 		 (double)rates_setpoint.thrust_body[0],
+			// 		 (double)rates_setpoint.thrust_body[1],
+			// 		 (double)rates_setpoint.thrust_body[2],
+			// 		 (double)rates_setpoint.roll,
+			// 		 (double)rates_setpoint.pitch,
+			// 		 (double)rates_setpoint.yaw);
+			// }
 
 		} else {
 			_man_roll_input_filter.reset(0.f);

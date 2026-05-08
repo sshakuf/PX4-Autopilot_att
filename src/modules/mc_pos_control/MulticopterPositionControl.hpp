@@ -39,7 +39,7 @@
 
 // Enable/disable detailed position control debug logging
 // Set to 1 to enable [DBG_POS] trace from RC to motors
-#define POS_CTRL_DEBUG_LOG 1
+#define POS_CTRL_DEBUG_LOG 0
 
 #if POS_CTRL_DEBUG_LOG
 # define POS_CTRL_INFO(fmt, ...) PX4_INFO(fmt, ##__VA_ARGS__)

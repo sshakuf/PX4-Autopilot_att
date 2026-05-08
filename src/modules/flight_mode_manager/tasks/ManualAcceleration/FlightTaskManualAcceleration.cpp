@@ -47,19 +47,19 @@ bool FlightTaskManualAcceleration::updateInitialize()
 	_sticks.checkAndUpdateStickInputs();
 
 	// [DBG_POS] FlightTask: rate-limited debug every ~1s
-	static int dbg_cnt = 0;
-	const bool dbg = (++dbg_cnt % 50) == 0;
+	// static int dbg_cnt = 0;
+	// const bool dbg = (++dbg_cnt % 50) == 0;
 
-	if (dbg) {
-		PX4_INFO("[DBG_POS] FT_Accel updateInit: ret=%d relax=%d sticks_avail=%d z=%d vz=%d yaw=%d",
-			 ret, (int)_param_df_pos_relax.get(), _sticks.isAvailable(),
-			 PX4_ISFINITE(_position(2)), PX4_ISFINITE(_velocity(2)), PX4_ISFINITE(_yaw));
-	}
+	// if (dbg) {
+	// 	PX4_INFO("[DBG_POS] FT_Accel updateInit: ret=%d relax=%d sticks_avail=%d z=%d vz=%d yaw=%d",
+	// 		 ret, (int)_param_df_pos_relax.get(), _sticks.isAvailable(),
+	// 		 PX4_ISFINITE(_position(2)), PX4_ISFINITE(_velocity(2)), PX4_ISFINITE(_yaw));
+	// }
 
 	// DF_POS_RELAX: allow running without valid z, vz, yaw, or sticks (horizontal tethered drone)
 	// Parent requires these for standard operation; relax when positioning is not applicable
 	if (_param_df_pos_relax.get() == 1) {
-		if (dbg) { PX4_INFO("[DBG_POS] FT_Accel: DF_POS_RELAX=1, returning %d", ret); }
+		// if (dbg) { PX4_INFO("[DBG_POS] FT_Accel: DF_POS_RELAX=1, returning %d", ret); }
 		return ret;
 	}
 
@@ -69,10 +69,10 @@ bool FlightTaskManualAcceleration::updateInitialize()
 	}
 
 	const bool out = ret && PX4_ISFINITE(_position(2)) && PX4_ISFINITE(_velocity(2)) && PX4_ISFINITE(_yaw);
-	if (dbg && !out) {
-		PX4_WARN("[DBG_POS] FT_Accel updateInit FAIL: ret=%d z=%d vz=%d yaw=%d",
-			 ret, PX4_ISFINITE(_position(2)), PX4_ISFINITE(_velocity(2)), PX4_ISFINITE(_yaw));
-	}
+	// if (dbg && !out) {
+	// 	PX4_WARN("[DBG_POS] FT_Accel updateInit FAIL: ret=%d z=%d vz=%d yaw=%d",
+	// 		 ret, PX4_ISFINITE(_position(2)), PX4_ISFINITE(_velocity(2)), PX4_ISFINITE(_yaw));
+	// }
 	return out;
 }
 
@@ -125,15 +125,15 @@ bool FlightTaskManualAcceleration::update()
 	_stick_acceleration_xy.getSetpoints(_position_setpoint, _velocity_setpoint, _acceleration_setpoint);
 
 	// [DBG_POS] FlightTask: stick-derived setpoints
-	static int dbg_sp_cnt = 0;
-	if ((++dbg_sp_cnt % 50) == 0) {
-		Vector2f stick_pr = _sticks.getPitchRollExpo();
-		PX4_INFO("[DBG_POS] FT_Accel SP: stick[%.2f,%.2f] acc[%.3f,%.3f] vel[%.2f,%.2f] pos_sp[%.1f,%.1f]",
-			 (double)stick_pr(0), (double)stick_pr(1),
-			 (double)_acceleration_setpoint(0), (double)_acceleration_setpoint(1),
-			 (double)_velocity_setpoint(0), (double)_velocity_setpoint(1),
-			 (double)_position_setpoint(0), (double)_position_setpoint(1));
-	}
+	// static int dbg_sp_cnt = 0;
+	// if ((++dbg_sp_cnt % 50) == 0) {
+	// 	Vector2f stick_pr = _sticks.getPitchRollExpo();
+	// 	PX4_INFO("[DBG_POS] FT_Accel SP: stick[%.2f,%.2f] acc[%.3f,%.3f] vel[%.2f,%.2f] pos_sp[%.1f,%.1f]",
+	// 		 (double)stick_pr(0), (double)stick_pr(1),
+	// 		 (double)_acceleration_setpoint(0), (double)_acceleration_setpoint(1),
+	// 		 (double)_velocity_setpoint(0), (double)_velocity_setpoint(1),
+	// 		 (double)_position_setpoint(0), (double)_position_setpoint(1));
+	// }
 
 	_constraints.want_takeoff = _checkTakeoff();
 

@@ -151,17 +151,17 @@ MulticopterRateControl::Run()
 		// use rates setpoint topic
 		vehicle_rates_setpoint_s vehicle_rates_setpoint{};
 
-		// [DBG_POS] mc_rate: which branch (manual/sticks vs pos_ctrl)
-		static int dbg_branch_cnt = 0;
-		const bool dbg_rate = (++dbg_branch_cnt % 100) == 0;
-		if (dbg_rate) {
-			PX4_INFO("[DBG_POS] mc_rate: manual=%d att=%d pos=%d vel=%d alt=%d",
-				 _vehicle_control_mode.flag_control_manual_enabled,
-				 _vehicle_control_mode.flag_control_attitude_enabled,
-				 _vehicle_control_mode.flag_control_position_enabled,
-				 _vehicle_control_mode.flag_control_velocity_enabled,
-				 _vehicle_control_mode.flag_control_altitude_enabled);
-		}
+		// // [DBG_POS] mc_rate: which branch (manual/sticks vs pos_ctrl)
+		// static int dbg_branch_cnt = 0;
+		// const bool dbg_rate = (++dbg_branch_cnt % 100) == 0;
+		// if (dbg_rate) {
+		// 	PX4_INFO("[DBG_POS] mc_rate: manual=%d att=%d pos=%d vel=%d alt=%d",
+		// 		 _vehicle_control_mode.flag_control_manual_enabled,
+		// 		 _vehicle_control_mode.flag_control_attitude_enabled,
+		// 		 _vehicle_control_mode.flag_control_position_enabled,
+		// 		 _vehicle_control_mode.flag_control_velocity_enabled,
+		// 		 _vehicle_control_mode.flag_control_altitude_enabled);
+		// }
 
 		if (_vehicle_control_mode.flag_control_manual_enabled && !_vehicle_control_mode.flag_control_attitude_enabled) {
 			// generate the rate setpoint from sticks
@@ -195,18 +195,18 @@ MulticopterRateControl::Run()
 				_rates_setpoint(2) = PX4_ISFINITE(vehicle_rates_setpoint.yaw)   ? vehicle_rates_setpoint.yaw   : rates(2);
 				_thrust_setpoint = Vector3f(vehicle_rates_setpoint.thrust_body);
 
-				// [DBG_POS] mc_rate: received from pos ctrl (manual=0, att=1/0, pos=1)
-				static int dbg_rate_cnt = 0;
-				if ((++dbg_rate_cnt % 50) == 0) {
-					PX4_INFO("[DBG_POS] mc_rate: from_pos thrust_b[%.3f,%.3f,%.3f] rates_en=%d direct=%d",
-						 (double)_thrust_setpoint(0), (double)_thrust_setpoint(1), (double)_thrust_setpoint(2),
-						 _vehicle_control_mode.flag_control_rates_enabled,
-						 _param_df_mc_dir_en.get() &&
-						 _vehicle_control_mode.flag_control_manual_enabled &&
-						 !_vehicle_control_mode.flag_control_altitude_enabled &&
-						 !_vehicle_control_mode.flag_control_velocity_enabled &&
-						 !_vehicle_control_mode.flag_control_position_enabled);
-				}
+				// // [DBG_POS] mc_rate: received from pos ctrl (manual=0, att=1/0, pos=1)
+				// static int dbg_rate_cnt = 0;
+				// if ((++dbg_rate_cnt % 50) == 0) {
+				// 	PX4_INFO("[DBG_POS] mc_rate: from_pos thrust_b[%.3f,%.3f,%.3f] rates_en=%d direct=%d",
+				// 		 (double)_thrust_setpoint(0), (double)_thrust_setpoint(1), (double)_thrust_setpoint(2),
+				// 		 _vehicle_control_mode.flag_control_rates_enabled,
+				// 		 _param_df_mc_dir_en.get() &&
+				// 		 _vehicle_control_mode.flag_control_manual_enabled &&
+				// 		 !_vehicle_control_mode.flag_control_altitude_enabled &&
+				// 		 !_vehicle_control_mode.flag_control_velocity_enabled &&
+				// 		 !_vehicle_control_mode.flag_control_position_enabled);
+				// }
 			}
 		}
 
