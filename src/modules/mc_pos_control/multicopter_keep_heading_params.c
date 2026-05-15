@@ -47,6 +47,22 @@
 PARAM_DEFINE_INT32(DF_YAW_HOLD_EN, 0);
 
 /**
+ * Enable outer yaw-speed PID
+ *
+ * When DF_YAW_HOLD_EN is enabled and this is set to 0, the keep-heading
+ * PID (coarse + fine) is bypassed: yaw-speed setpoint forced to 0 and all
+ * PID state reset. Useful for isolating inner rate-loop behavior from the
+ * outer heading-hold PID.
+ *
+ * @min 0
+ * @max 1
+ * @value 0 Disabled (bypass PID)
+ * @value 1 Enabled
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_INT32(DF_YAWSPD_PID_EN, 1);
+
+/**
  * Keep heading target angle
  *
  * Target heading in degrees using NED (North-East-Down) coordinates.

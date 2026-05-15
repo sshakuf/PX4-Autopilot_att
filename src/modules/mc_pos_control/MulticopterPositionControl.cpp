@@ -319,6 +319,7 @@ void MulticopterPositionControl::parameters_update(bool force) {
     // Set keep heading parameters
     _control.setKeepHeading(_param_df_yaw_hold_en.get(),
                             _param_df_yaw_hold.get());
+    _control.setYawSpeedPidEnabled(_param_df_yawspeed_pid_en.get() != 0);
     _control.setMaxYawRate(_param_df_yawspeed_maxr.get());
     _control.setMaxYawAcceleration(_param_df_yaw_acc_max.get());
 

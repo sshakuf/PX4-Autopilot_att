@@ -142,6 +142,13 @@ public:
 	void setKeepHeading(bool enable, float heading_deg);
 
 	/**
+	 * Enable/disable the outer yaw-speed PID (keep-heading PID).
+	 * When false, yaw-speed setpoint is forced to 0 and integrators reset,
+	 * even when keep_heading is otherwise enabled. For diagnostics.
+	 */
+	void setYawSpeedPidEnabled(bool enable) { _yawspeed_pid_enabled = enable; }
+
+	/**
 	 * Set maximum yaw rate for keep heading
 	 * @param max_yaw_rate_deg_s Maximum yaw rate in degrees per second
 	 */
@@ -297,6 +304,7 @@ private:
 
 	// Keep heading feature
 	bool _keep_heading_enabled{false}; /**< enable keep heading feature */
+	bool _yawspeed_pid_enabled{true}; /**< enable outer yaw-speed PID (DF_YAWSPEED_PID_EN) */
 	float _keep_heading_target{0.0f}; /**< target heading in radians */
 	float _max_yaw_rate{math::radians(20.0f)}; /**< maximum yaw rate in rad/s */
 	float _max_yaw_accel{math::radians(10.0f)}; /**< maximum yaw acceleration in rad/s^2 */

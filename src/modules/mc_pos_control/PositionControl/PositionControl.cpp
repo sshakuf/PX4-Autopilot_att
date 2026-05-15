@@ -151,6 +151,16 @@ bool PositionControl::update(const float dt) {
     if (_keep_heading_enabled) {
       _yaw_sp = _keep_heading_target;
 
+      if (!_yawspeed_pid_enabled) {
+        // DF_YAWSPD_PID_EN=0: bypass outer yaw-speed PID. Hold target heading
+        // (for display only) and command zero yaw-rate so the inner rate loop
+        // simply holds yaw rate at 0.
+        _yawspeed_sp = 0.f;
+        _yawspeed_integral = 0.0f;
+        _yawspeed_error_prev = 0.0f;
+        _yawspeed_sp_prev = 0.0f;
+      } else {
+
       const float dt_limited = math::constrain(dt, 0.002f, 0.04f);
       const float max_yaw_rate = math::max(_max_yaw_rate, math::radians(1.0f));
       const float max_yaw_accel = math::max(_max_yaw_accel, math::radians(1.0f));
@@ -262,6 +272,7 @@ bool PositionControl::update(const float dt) {
       _yawspeed_sp_prev = _yawspeed_sp;
       _yawspeed_error_prev = yaw_rate_sp - _yaw_rate;
 
+      } // end DF_YAWSPEED_PID_EN guard
     } else {
       // Reset PID state when not in keep heading mode
       _yawspeed_integral = 0.0f;
@@ -362,7 +373,7 @@ void PositionControl::_accelerationControl() {
   // Scale the acceleration to thrust with a reasonable gain
 
   // Direct acceleration to thrust mapping for horizontal-only drone
-  const float max_horizontal_acc = 2.0f;  // m/s^2 per unit thrust
+  const float max_horizontal_acc = 0.5f;  // m/s^2 per unit thrust
 
   _thr_sp(0) = math::constrain(_acc_sp(0) / max_horizontal_acc, -1.0f,
                                1.0f); // Fx - forward/backward thrust

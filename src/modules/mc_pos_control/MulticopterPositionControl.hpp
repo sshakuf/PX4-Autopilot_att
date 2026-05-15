@@ -204,6 +204,7 @@ private:
 
 		// Keep heading parameters
 		(ParamInt<px4::params::DF_YAW_HOLD_EN>) _param_df_yaw_hold_en,
+		(ParamInt<px4::params::DF_YAWSPD_PID_EN>) _param_df_yawspeed_pid_en,
 		(ParamFloat<px4::params::DF_YAW_HOLD>) _param_df_yaw_hold,
 		(ParamFloat<px4::params::DF_YAWSPEED_MAXR>) _param_df_yawspeed_maxr,
 		(ParamFloat<px4::params::DF_YAW_ACC_MAX>) _param_df_yaw_acc_max,

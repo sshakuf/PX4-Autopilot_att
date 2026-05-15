@@ -78,7 +78,16 @@ MulticopterRateControl::parameters_updated()
 	// rate control parameters
 	// The controller gain K is used to convert the parallel (P + I/s + sD) form
 	// to the ideal (K * [1 + 1/sTi + sTd]) form
-	const Vector3f rate_k = Vector3f(_param_mc_rollrate_k.get(), _param_mc_pitchrate_k.get(), _param_mc_yawrate_k.get());
+	Vector3f rate_k = Vector3f(_param_mc_rollrate_k.get(), _param_mc_pitchrate_k.get(), _param_mc_yawrate_k.get());
+
+	// DF_PAYLOAD_KG: scale all three rate-axis gains based on payload to keep rate
+	// loop stable when flying with less than the full 45 kg payload.
+	const float payload_kg = math::constrain(_param_df_payload_kg.get(), 0.f, 45.f);
+	const float payload_min = math::constrain(_param_df_payload_min.get(), 0.05f, 1.f);
+	const float rp_scale = payload_min + (1.f - payload_min) * (payload_kg / 45.f);
+	rate_k(0) *= rp_scale;
+	rate_k(1) *= rp_scale;
+	rate_k(2) *= rp_scale;
 
 	_rate_control.setPidGains(
 		rate_k.emult(Vector3f(_param_mc_rollrate_p.get(), _param_mc_pitchrate_p.get(), _param_mc_yawrate_p.get())),
