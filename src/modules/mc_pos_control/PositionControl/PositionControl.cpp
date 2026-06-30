@@ -77,6 +77,11 @@ void PositionControl::setHorizontalThrustMargin(const float margin) {
   _lim_thr_xy_margin = margin;
 }
 
+void PositionControl::setAccelPerThrust(const float acc_per_thrust) {
+  // Guard against zero/negative to avoid division blow-up in _accelerationControl()
+  _acc_per_thrust = math::max(acc_per_thrust, 0.05f);
+}
+
 void PositionControl::updateHoverThrust(const float hover_thrust_new) {
   // Simplified for horizontal-only drone - no vertical thrust management
   setHoverThrust(hover_thrust_new);
@@ -372,8 +377,11 @@ void PositionControl::_accelerationControl() {
   // For horizontal movement, we need significant thrust to overcome inertia
   // Scale the acceleration to thrust with a reasonable gain
 
-  // Direct acceleration to thrust mapping for horizontal-only drone
-  const float max_horizontal_acc = 0.5f;  // m/s^2 per unit thrust
+  // Direct acceleration to thrust mapping for horizontal-only drone.
+  // thrust_norm = acc_sp / a_max, where a_max = F_max/mass is the horizontal
+  // acceleration at full thrust (DF_ACC_PER_THR). No gravity term: the wire
+  // carries the weight, the fans only push horizontally.
+  const float max_horizontal_acc = _acc_per_thrust;  // m/s^2 per unit thrust
 
   _thr_sp(0) = math::constrain(_acc_sp(0) / max_horizontal_acc, -1.0f,
                                1.0f); // Fx - forward/backward thrust

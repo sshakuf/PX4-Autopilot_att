@@ -202,6 +202,9 @@ private:
 
 		(ParamInt<px4::params::DF_POS_RELAX>) _param_df_pos_relax,
 
+		// Horizontal-drone acceleration->thrust calibration (a_max = F_max/mass)
+		(ParamFloat<px4::params::DF_ACC_PER_THR>) _param_df_acc_per_thr,
+
 		// Keep heading parameters
 		(ParamInt<px4::params::DF_YAW_HOLD_EN>) _param_df_yaw_hold_en,
 		(ParamInt<px4::params::DF_YAWSPD_PID_EN>) _param_df_yawspeed_pid_en,

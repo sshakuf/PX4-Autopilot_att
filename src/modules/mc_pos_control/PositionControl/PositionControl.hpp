@@ -116,6 +116,13 @@ public:
 	void setHorizontalThrustMargin(const float margin);
 
 	/**
+	 * Set the horizontal acceleration produced at full thrust (a_max = F_max/mass).
+	 * Calibrates the acceleration->thrust conversion: thrust_norm = acc_sp / acc_per_thrust.
+	 * @param acc_per_thrust horizontal m/s^2 at full normalized thrust (DF_ACC_PER_THR)
+	 */
+	void setAccelPerThrust(const float acc_per_thrust);
+
+	/**
 	 * Set the maximum tilt angle - not used for horizontal-only drone (always level)
 	 * @param tilt angle in radians from level orientation
 	 */
@@ -283,6 +290,7 @@ private:
 	float _lim_thr_min{}; ///< Minimum collective thrust allowed as output [-1,0] e.g. -0.9
 	float _lim_thr_max{}; ///< Maximum collective thrust allowed as output [-1,0] e.g. -0.1
 	float _lim_thr_xy_margin{}; ///< Margin to keep for horizontal control when saturating prioritized vertical thrust
+	float _acc_per_thrust{0.5f}; ///< Horizontal accel (m/s^2) at full thrust, a_max=F_max/mass (DF_ACC_PER_THR); default keeps legacy 0.5 behavior
 	float _lim_tilt{}; ///< Maximum tilt from level the output attitude is allowed to have
 
 	float _hover_thrust{}; ///< Thrust [HOVER_THRUST_MIN, HOVER_THRUST_MAX] with which the vehicle hovers not accelerating down or up with level orientation

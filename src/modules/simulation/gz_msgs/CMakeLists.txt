@@ -24,6 +24,10 @@ if (Protobuf_FOUND)
             ${Protobuf_INCLUDE_DIRS}
     )
     target_link_libraries(px4_gz_msgs PUBLIC ${PROTOBUF_LIBRARIES})
+    # protobuf 34.x pulls in abseil which requires C++17
+    set_property(TARGET px4_gz_msgs PROPERTY CXX_STANDARD 17)
+    # abseil headers trigger warnings that PX4 treats as errors
+    target_compile_options(px4_gz_msgs PRIVATE -Wno-double-promotion -Wno-error=double-promotion)
     if (Protobuf_VERSION VERSION_LESS "3.8")
         target_compile_options(px4_gz_msgs PRIVATE -Wno-error=float-equal)
     endif()

@@ -135,3 +135,33 @@ PARAM_DEFINE_FLOAT(MPC_Z_VEL_D_ACC, 0.f);
  * @group Multicopter Position Control
  */
 PARAM_DEFINE_FLOAT(MPC_XY_VEL_D_ACC, 0.2f);
+
+/**
+ * Horizontal acceleration produced at full thrust (Direct Flight)
+ *
+ * Horizontal-drone only. Calibrates the acceleration->thrust conversion in the
+ * position controller: thrust_norm = acc_sp / DF_ACC_PER_THR. Physically this
+ * is the maximum horizontal acceleration the fans can produce at full thrust,
+ * a_max = F_max / mass (no gravity term: the wire carries the weight, the fans
+ * only push horizontally).
+ *
+ * Setting this TOO LOW makes the controller command far more thrust than
+ * intended for a given acceleration, causing saturation and oscillation.
+ * Higher = gentler/less thrust. Lower = more aggressive. Because a_max = F_max/m,
+ * reduce this value when payload (mass) increases.
+ *
+ * Reference values:
+ *   - Old drone (smaller fans): 0.5  (previously hard-coded, kept as default)
+ *   - New drone (bigger fans):  ~3.0 (flight-measured 1.4-3.3 m/s^2 per unit
+ *                                     thrust, tether-limited so true a_max is
+ *                                     higher; start at 3.0 and calibrate via
+ *                                     F_max/mass or flight test)
+ *
+ * @unit m/s^2
+ * @min 0.05
+ * @max 20.0
+ * @decimal 2
+ * @increment 0.1
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_FLOAT(DF_ACC_PER_THR, 0.5f);

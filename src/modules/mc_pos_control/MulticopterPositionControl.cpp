@@ -192,6 +192,7 @@ void MulticopterPositionControl::parameters_update(bool force) {
         Vector3f(_param_mpc_xy_vel_d_acc.get(), _param_mpc_xy_vel_d_acc.get(),
                  _param_mpc_z_vel_d_acc.get()));
     _control.setHorizontalThrustMargin(_param_mpc_thr_xy_marg.get());
+    _control.setAccelPerThrust(_param_df_acc_per_thr.get());
     _control.decoupleHorizontalAndVecticalAcceleration(
         _param_mpc_acc_decouple.get());
     _goto_control.setParamMpcAccHor(_param_mpc_acc_hor.get());
