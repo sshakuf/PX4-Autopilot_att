@@ -43,6 +43,7 @@ px4_add_module(
 		mc_att_control.hpp
 	DEPENDS
 		AttitudeControl
+		HeadingHold
 		mathlib
 		px4_work_queue
 		StickYaw

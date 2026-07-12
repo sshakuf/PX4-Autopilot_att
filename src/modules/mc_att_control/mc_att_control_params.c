@@ -216,3 +216,19 @@ PARAM_DEFINE_FLOAT(DF_MC_DIR_YAW, 1.0f);
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(DF_MC_DIR_THR, 1.0f);
+
+/**
+ * Enable keep heading in attitude (stabilized) mode
+ *
+ * When enabled and flying in manual/stabilized mode, the attitude
+ * controller holds the heading given by DF_YAW_HOLD using the same
+ * keep-heading yaw-rate PID (DF_YAW*) as position mode. Roll/pitch
+ * sticks command torque directly (scaled by DF_MC_DIR_RP) and the
+ * throttle stick commands thrust (scaled by DF_MC_DIR_THR); the yaw
+ * stick is ignored. Takes precedence over DF_MC_DIR_EN.
+ *
+ * @boolean
+ * @reboot_required false
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_INT32(DF_ATT_HOLD_EN, 0);

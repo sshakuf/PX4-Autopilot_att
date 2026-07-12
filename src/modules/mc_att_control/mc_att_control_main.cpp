@@ -103,6 +103,24 @@ MulticopterAttitudeControl::parameters_updated()
 	}
 
 	_man_tilt_max = math::radians(_param_mpc_man_tilt_max.get());
+
+	// Keep-heading in attitude mode: same DF_YAW_* tuning as position mode
+	_heading_hold.setKeepHeading(_param_df_att_hold_en.get() != 0, _param_df_yaw_hold.get());
+	_heading_hold.setYawSpeedPidEnabled(_param_df_yawspeed_pid_en.get() != 0);
+	_heading_hold.setFineYawEnabled(_param_df_yaw_fine_en.get() != 0);
+	_heading_hold.setMaxYawRate(_param_df_yawspeed_maxr.get());
+	_heading_hold.setMaxYawAcceleration(_param_df_yaw_acc_max.get());
+	_heading_hold.setYawSpeedGains(_param_df_yawspeed_p.get(), _param_df_yawspeed_i.get(), _param_df_yawspeed_d.get());
+	_heading_hold.setFineYawSpeedGains(
+		_param_df_yaw_fine_err.get(),
+		_param_df_yaw_fine_rate.get(),
+		_param_df_yaw_fine_p.get(),
+		_param_df_yaw_fine_i.get(),
+		_param_df_yaw_fine_d.get(),
+		_param_df_yaw_fine_ilim.get(),
+		_param_df_yaw_fine_acc.get(),
+		_param_df_yaw_fine_tol.get(),
+		_param_df_yaw_fine_minr.get());
 }
 
 float
@@ -225,6 +243,47 @@ MulticopterAttitudeControl::generate_attitude_setpoint(const Quatf &q, float dt)
 }
 
 void
+MulticopterAttitudeControl::run_attitude_heading_hold(const Quatf &q, float dt)
+{
+	// Measured yaw rate from the gyro, same source position mode uses
+	float yaw_rate = 0.f;
+	vehicle_angular_velocity_s angular_velocity;
+
+	if (_vehicle_angular_velocity_sub.copy(&angular_velocity)
+	    && hrt_elapsed_time(&angular_velocity.timestamp_sample) < 100_ms
+	    && PX4_ISFINITE(angular_velocity.xyz[2])) {
+		yaw_rate = angular_velocity.xyz[2];
+	}
+
+	const bool manual_valid = (_manual_control_setpoint.timestamp != 0)
+				  && (hrt_elapsed_time(&_manual_control_setpoint.timestamp) < 100_ms);
+
+	vehicle_rates_setpoint_s rates_sp{};
+	// NAN roll/pitch: the rate controller substitutes the measured rates
+	// (zero error) and stick torque is injected there instead.
+	rates_sp.roll = NAN;
+	rates_sp.pitch = NAN;
+
+	if (manual_valid) {
+		rates_sp.yaw = _heading_hold.update(Eulerf(q).psi(), yaw_rate, dt);
+		rates_sp.thrust_body[2] = -((_manual_control_setpoint.throttle + 1.f) * 0.5f) * _param_df_mc_dir_thr.get();
+
+	} else {
+		// No valid manual input - hold zero yaw rate and cut thrust
+		_heading_hold.resetState();
+		rates_sp.yaw = 0.f;
+		rates_sp.thrust_body[2] = 0.f;
+
+		if (_loop_counter % 100 == 0) { // Warn every ~1 second
+			PX4_WARN("[DF_ATT_HOLD] No valid manual input, entering failsafe");
+		}
+	}
+
+	rates_sp.timestamp = hrt_absolute_time();
+	_vehicle_rates_setpoint_pub.publish(rates_sp);
+}
+
+void
 MulticopterAttitudeControl::Run()
 {
 	if (should_exit()) {
@@ -252,7 +311,8 @@ MulticopterAttitudeControl::Run()
 	// DIRECT FLIGHT CONTROL MODE - Bypass ALL controllers
 	// ============================================================
 	// CRITICAL: This MUST be checked BEFORE normal control chain to prevent interference
-	if (_param_df_mc_dir_en.get()) {
+	// DF_ATT_HOLD_EN takes precedence: heading-hold runs through the normal rate loop below.
+	if (_param_df_mc_dir_en.get() && !_param_df_att_hold_en.get()) {
 
 		// Update manual control setpoint and vehicle control mode
 		_manual_control_setpoint_sub.update(&_manual_control_setpoint);
@@ -422,12 +482,32 @@ MulticopterAttitudeControl::Run()
 		// 		 (int)_vehicle_control_mode.flag_control_altitude_enabled);
 		// }
 
-		if (run_att_ctrl) {
+		const bool manual_stabilized = _vehicle_control_mode.flag_control_manual_enabled &&
+					       !_vehicle_control_mode.flag_control_altitude_enabled &&
+					       !_vehicle_control_mode.flag_control_velocity_enabled &&
+					       !_vehicle_control_mode.flag_control_position_enabled;
+
+		// Keep heading in attitude mode: bypass the attitude P-loop and command
+		// the keep-heading yaw-rate setpoint directly to the rate controller.
+		// Roll/pitch stick torque is injected in mc_rate_control (DF_MC_DIR_RP).
+		const bool att_heading_hold_active = run_att_ctrl && manual_stabilized
+						     && (_param_df_att_hold_en.get() != 0);
+
+		if (!att_heading_hold_active) {
+			_heading_hold.resetState();
+		}
+
+		if (att_heading_hold_active) {
+			run_attitude_heading_hold(q, dt);
+
+			_man_roll_input_filter.reset(0.f);
+			_man_pitch_input_filter.reset(0.f);
+			_yaw_setpoint_stabilized = NAN;
+			_stick_yaw.reset(Eulerf(q).psi(), _unaided_heading);
+
+		} else if (run_att_ctrl) {
 			// Generate the attitude setpoint from stick inputs if we are in Manual/Stabilized mode
-			if (_vehicle_control_mode.flag_control_manual_enabled &&
-			    !_vehicle_control_mode.flag_control_altitude_enabled &&
-			    !_vehicle_control_mode.flag_control_velocity_enabled &&
-			    !_vehicle_control_mode.flag_control_position_enabled) {
+			if (manual_stabilized) {
 
 				generate_attitude_setpoint(q, dt);
 

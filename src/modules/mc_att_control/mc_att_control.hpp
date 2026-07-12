@@ -48,6 +48,7 @@
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/autotune_attitude_control_status.h>
 #include <uORB/topics/hover_thrust_estimate.h>
+#include <uORB/topics/vehicle_angular_velocity.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_control_mode.h>
@@ -57,6 +58,7 @@
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
+#include <lib/heading_hold/HeadingHoldControl.hpp>
 #include <lib/mathlib/math/filter/AlphaFilter.hpp>
 #include <lib/slew_rate/SlewRate.hpp>
 #include <lib/stick_yaw/StickYaw.hpp>
@@ -98,8 +100,16 @@ private:
 	 */
 	void generate_attitude_setpoint(const matrix::Quatf &q, float dt);
 
+	/**
+	 * DF_ATT_HOLD_EN: hold DF_YAW_HOLD heading with the keep-heading yaw-rate
+	 * PID and publish a rates setpoint directly, bypassing the attitude P-loop.
+	 * Roll/pitch torque is injected from sticks in mc_rate_control.
+	 */
+	void run_attitude_heading_hold(const matrix::Quatf &q, float dt);
+
 	AttitudeControl _attitude_control; /**< class for attitude control calculations */
 	StickYaw _stick_yaw{this};
+	HeadingHoldControl _heading_hold; /**< keep-heading yaw-rate PID shared with position mode */
 
 	uORB::Subscription _parameter_update_sub{ORB_ID(parameter_update)};
 
@@ -111,6 +121,7 @@ private:
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
 	uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
+	uORB::Subscription _vehicle_angular_velocity_sub{ORB_ID(vehicle_angular_velocity)};
 
 	uORB::SubscriptionCallbackWorkItem _vehicle_attitude_sub{this, ORB_ID(vehicle_attitude)};
 
@@ -178,6 +189,26 @@ private:
 		(ParamInt<px4::params::DF_MC_DIR_EN>) _param_df_mc_dir_en,
 		(ParamFloat<px4::params::DF_MC_DIR_RP>) _param_df_mc_dir_rp,
 		(ParamFloat<px4::params::DF_MC_DIR_YAW>) _param_df_mc_dir_yaw,
-		(ParamFloat<px4::params::DF_MC_DIR_THR>) _param_df_mc_dir_thr
+		(ParamFloat<px4::params::DF_MC_DIR_THR>) _param_df_mc_dir_thr,
+
+		/* Attitude-mode keep heading (shares DF_YAW_* tuning with position mode) */
+		(ParamInt<px4::params::DF_ATT_HOLD_EN>) _param_df_att_hold_en,
+		(ParamFloat<px4::params::DF_YAW_HOLD>) _param_df_yaw_hold,
+		(ParamInt<px4::params::DF_YAWSPD_PID_EN>) _param_df_yawspeed_pid_en,
+		(ParamInt<px4::params::DF_YAW_FINE_EN>) _param_df_yaw_fine_en,
+		(ParamFloat<px4::params::DF_YAWSPEED_MAXR>) _param_df_yawspeed_maxr,
+		(ParamFloat<px4::params::DF_YAW_ACC_MAX>) _param_df_yaw_acc_max,
+		(ParamFloat<px4::params::DF_YAWSPEED_P>) _param_df_yawspeed_p,
+		(ParamFloat<px4::params::DF_YAWSPEED_I>) _param_df_yawspeed_i,
+		(ParamFloat<px4::params::DF_YAWSPEED_D>) _param_df_yawspeed_d,
+		(ParamFloat<px4::params::DF_YAW_FINE_ERR>) _param_df_yaw_fine_err,
+		(ParamFloat<px4::params::DF_YAW_FINE_RATE>) _param_df_yaw_fine_rate,
+		(ParamFloat<px4::params::DF_YAW_FINE_P>) _param_df_yaw_fine_p,
+		(ParamFloat<px4::params::DF_YAW_FINE_I>) _param_df_yaw_fine_i,
+		(ParamFloat<px4::params::DF_YAW_FINE_D>) _param_df_yaw_fine_d,
+		(ParamFloat<px4::params::DF_YAW_FINE_ILIM>) _param_df_yaw_fine_ilim,
+		(ParamFloat<px4::params::DF_YAW_FINE_ACC>) _param_df_yaw_fine_acc,
+		(ParamFloat<px4::params::DF_YAW_FINE_TOL>) _param_df_yaw_fine_tol,
+		(ParamFloat<px4::params::DF_YAW_FINE_MINR>) _param_df_yaw_fine_minr
 	)
 };
