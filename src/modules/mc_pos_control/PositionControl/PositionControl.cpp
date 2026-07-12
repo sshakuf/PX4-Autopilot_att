@@ -87,48 +87,6 @@ void PositionControl::updateHoverThrust(const float hover_thrust_new) {
   setHoverThrust(hover_thrust_new);
 }
 
-void PositionControl::setKeepHeading(bool enable, float heading_deg) {
-  if (!enable || !_keep_heading_enabled) {
-    _yawspeed_integral = 0.0f;
-    _yawspeed_error_prev = 0.0f;
-    _yawspeed_sp_prev = 0.0f;
-  }
-
-  _keep_heading_enabled = enable;
-  // Convert degrees to radians and normalize to [-pi, pi]
-  // Heading is in NED coordinates: 0° = North, 90° = East, 180° = South, -90°/270° = West
-  _keep_heading_target = math::radians(heading_deg);
-  _keep_heading_target = wrap_pi(_keep_heading_target);
-}
-
-void PositionControl::setMaxYawRate(float max_yaw_rate_deg_s) {
-  _max_yaw_rate = math::radians(max_yaw_rate_deg_s);
-}
-
-void PositionControl::setMaxYawAcceleration(float max_yaw_accel_deg_s2) {
-  _max_yaw_accel = math::radians(max_yaw_accel_deg_s2);
-}
-
-void PositionControl::setYawSpeedGains(float P, float I, float D) {
-  _gain_yawspeed_p = P;
-  _gain_yawspeed_i = I;
-  _gain_yawspeed_d = D;
-}
-
-void PositionControl::setFineYawSpeedGains(float error_deg, float rate_limit_deg_s, float P, float I, float D,
-                                           float integral_limit_deg_s, float brake_accel_deg_s2, float tolerance_deg,
-                                           float min_rate_deg_s) {
-  _fine_yaw_error = math::radians(error_deg);
-  _fine_yaw_rate_limit = math::radians(rate_limit_deg_s);
-  _fine_yawspeed_p = P;
-  _fine_yawspeed_i = I;
-  _fine_yawspeed_d = D;
-  _fine_yawspeed_ilim = math::radians(integral_limit_deg_s);
-  _fine_yaw_brake_accel = math::radians(brake_accel_deg_s2);
-  _fine_yaw_tolerance = math::radians(tolerance_deg);
-  _fine_yaw_min_rate = math::radians(min_rate_deg_s);
-}
-
 void PositionControl::setState(const PositionControlStates &states) {
   _pos = states.position;
   _vel = states.velocity;
@@ -153,136 +111,13 @@ bool PositionControl::update(const float dt) {
     _velocityControl(dt);
 
     // Apply keep heading override if enabled
-    if (_keep_heading_enabled) {
-      _yaw_sp = _keep_heading_target;
+    if (_heading_hold.enabled()) {
+      _yaw_sp = _heading_hold.targetHeading();
+      _yawspeed_sp = _heading_hold.update(_yaw, _yaw_rate, dt);
 
-      if (!_yawspeed_pid_enabled) {
-        // DF_YAWSPD_PID_EN=0: bypass outer yaw-speed PID. Hold target heading
-        // (for display only) and command zero yaw-rate so the inner rate loop
-        // simply holds yaw rate at 0.
-        _yawspeed_sp = 0.f;
-        _yawspeed_integral = 0.0f;
-        _yawspeed_error_prev = 0.0f;
-        _yawspeed_sp_prev = 0.0f;
-      } else {
-
-      const float dt_limited = math::constrain(dt, 0.002f, 0.04f);
-      const float max_yaw_rate = math::max(_max_yaw_rate, math::radians(1.0f));
-      const float max_yaw_accel = math::max(_max_yaw_accel, math::radians(1.0f));
-
-      const float heading_error = wrap_pi(_keep_heading_target - _yaw);
-      const float abs_heading_error = fabsf(heading_error);
-      const float direction = heading_error >= 0.0f ? 1.0f : -1.0f;
-      const bool rotating_towards_target = _yaw_rate * direction > 0.0f;
-      const float fine_yaw_error = math::max(_fine_yaw_error, math::radians(0.5f));
-      const float fine_yaw_brake_accel = math::max(_fine_yaw_brake_accel, math::radians(1.0f));
-      const float stopping_angle = _yaw_rate * fabsf(_yaw_rate) / (2.0f * fine_yaw_brake_accel);
-      const float compensated_heading_error = heading_error - stopping_angle;
-      const bool fine_heading_hold = (abs_heading_error < fine_yaw_error)
-                                     || (rotating_towards_target && (fabsf(compensated_heading_error) < fine_yaw_error));
-
-      // Braking profile: maximum rate that can still stop inside the remaining angle.
-      const float stopping_limited_rate = sqrtf(2.0f * max_yaw_accel * abs_heading_error);
-      const float heading_rate = _gain_yawspeed_p * abs_heading_error;
-      const float profile_yaw_rate_sp = direction * math::min(max_yaw_rate, math::min(heading_rate, stopping_limited_rate));
-      float yaw_rate_sp = profile_yaw_rate_sp;
-
-      if (fine_heading_hold) {
-        const float fine_heading_rate_limit = math::min(max_yaw_rate,
-                                                        math::max(_fine_yaw_rate_limit, math::radians(1.0f)));
-        const float fine_heading_rate = math::constrain(_fine_yawspeed_p * compensated_heading_error,
-                                                        -fine_heading_rate_limit,
-                                                        fine_heading_rate_limit);
-
-        yaw_rate_sp = fine_heading_rate - _fine_yawspeed_d * _yaw_rate;
-
-        const float fine_min_rate = math::min(fine_heading_rate_limit, math::max(_fine_yaw_min_rate, 0.0f));
-
-        const float drift_arrest_error = math::max(3.0f * _fine_yaw_tolerance, math::radians(2.0f));
-        const bool drifting_away_from_target = _yaw_rate * heading_error < 0.0f;
-
-        if ((fine_min_rate > FLT_EPSILON)
-            && (abs_heading_error < drift_arrest_error)
-            && drifting_away_from_target
-            && (fabsf(_yaw_rate) > math::radians(0.5f))
-            && (fabsf(yaw_rate_sp) < fine_min_rate)) {
-          const float drift_arrest_rate = math::constrain(-2.0f * _fine_yawspeed_d * _yaw_rate,
-                                                          -fine_min_rate, fine_min_rate);
-
-          if (fabsf(drift_arrest_rate) > fabsf(yaw_rate_sp)) {
-            yaw_rate_sp = drift_arrest_rate;
-          }
-
-        } else if ((fine_min_rate > FLT_EPSILON)
-                   && (abs_heading_error > math::radians(0.25f))
-                   && (fabsf(_yaw_rate) < math::radians(5.0f))) {
-          const float boost_scale = math::constrain(abs_heading_error / math::max(_fine_yaw_tolerance, math::radians(0.5f)),
-                                                    0.0f, 1.0f);
-          const float boosted_yaw_rate_sp = yaw_rate_sp + direction * fine_min_rate * boost_scale;
-          yaw_rate_sp = math::constrain(boosted_yaw_rate_sp, -fine_heading_rate_limit, fine_heading_rate_limit);
-        }
-      }
-
-      const float yaw_i_gain = fine_heading_hold ? _fine_yawspeed_i : _gain_yawspeed_i;
-
-      if (yaw_i_gain > FLT_EPSILON) {
-        const float integral_yaw_rate_limit = fine_heading_hold ? _fine_yawspeed_ilim : 0.25f * max_yaw_rate;
-        const float integral_limit = integral_yaw_rate_limit / yaw_i_gain;
-        const float yaw_rate_i = yaw_i_gain * _yawspeed_integral;
-        const float yaw_rate_unsaturated = yaw_rate_sp + yaw_rate_i;
-        const bool saturated = fabsf(yaw_rate_unsaturated) >= max_yaw_rate;
-
-        // Integrate only when not driving deeper into yaw-rate saturation.
-        if (fine_heading_hold && (!saturated || (heading_error * yaw_rate_unsaturated < 0.0f))) {
-          _yawspeed_integral = math::constrain(_yawspeed_integral + heading_error * dt_limited,
-                                               -integral_limit, integral_limit);
-
-        } else if (!fine_heading_hold) {
-          _yawspeed_integral *= 0.98f;
-        }
-
-        yaw_rate_sp += yaw_i_gain * _yawspeed_integral;
-
-      } else {
-        _yawspeed_integral = 0.0f;
-      }
-
-      // Brake only when the vehicle is already rotating faster than the
-      // stopping profile allows. Do not damp normal motion toward the target.
-      const float excess_yaw_rate = fabsf(_yaw_rate) - fabsf(profile_yaw_rate_sp);
-
-      if (!fine_heading_hold && rotating_towards_target && excess_yaw_rate > 0.0f) {
-        yaw_rate_sp -= direction * _gain_yawspeed_d * excess_yaw_rate;
-      }
-
-      yaw_rate_sp = math::constrain(yaw_rate_sp, -max_yaw_rate, max_yaw_rate);
-
-      const bool setpoint_moves_towards_target_faster = yaw_rate_sp * direction > _yawspeed_sp_prev * direction;
-
-      if (fine_heading_hold) {
-        const float max_delta_yaw_rate = fine_yaw_brake_accel * dt_limited;
-        _yawspeed_sp = _yawspeed_sp_prev + math::constrain(yaw_rate_sp - _yawspeed_sp_prev,
-                                                           -max_delta_yaw_rate, max_delta_yaw_rate);
-
-      } else if (setpoint_moves_towards_target_faster && !(rotating_towards_target && excess_yaw_rate > 0.0f)) {
-        const float max_delta_yaw_rate = max_yaw_accel * dt_limited;
-        _yawspeed_sp = _yawspeed_sp_prev + math::constrain(yaw_rate_sp - _yawspeed_sp_prev,
-                                                           -max_delta_yaw_rate, max_delta_yaw_rate);
-
-      } else {
-        _yawspeed_sp = yaw_rate_sp;
-      }
-
-      _yawspeed_sp = math::constrain(_yawspeed_sp, -max_yaw_rate, max_yaw_rate);
-      _yawspeed_sp_prev = _yawspeed_sp;
-      _yawspeed_error_prev = yaw_rate_sp - _yaw_rate;
-
-      } // end DF_YAWSPEED_PID_EN guard
     } else {
       // Reset PID state when not in keep heading mode
-      _yawspeed_integral = 0.0f;
-      _yawspeed_error_prev = 0.0f;
-      _yawspeed_sp_prev = 0.0f;
+      _heading_hold.resetState();
 
       _yawspeed_sp = PX4_ISFINITE(_yawspeed_sp) ? _yawspeed_sp : 0.f;
       _yaw_sp = PX4_ISFINITE(_yaw_sp)

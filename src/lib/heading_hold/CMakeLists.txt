@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2019 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2023 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,14 +31,7 @@
 #
 ############################################################################
 
-px4_add_library(PositionControl
-	ControlMath.cpp
-	ControlMath.hpp
-	PositionControl.cpp
-	PositionControl.hpp
+px4_add_library(HeadingHold
+	HeadingHoldControl.cpp
 )
-target_include_directories(PositionControl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(PositionControl PUBLIC HeadingHold)
-
-px4_add_unit_gtest(SRC ControlMathTest.cpp LINKLIBS PositionControl)
-px4_add_unit_gtest(SRC PositionControlTest.cpp LINKLIBS PositionControl)
+target_include_directories(HeadingHold PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

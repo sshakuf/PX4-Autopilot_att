@@ -39,6 +39,7 @@
 
 #pragma once
 
+#include <lib/heading_hold/HeadingHoldControl.hpp>
 #include <lib/mathlib/mathlib.h>
 #include <matrix/matrix/math.hpp>
 #include <uORB/topics/trajectory_setpoint.h>
@@ -146,20 +147,27 @@ public:
 	 * @param enable Enable/disable keep heading feature
 	 * @param heading_deg Target heading in degrees (0-360, 0=North)
 	 */
-	void setKeepHeading(bool enable, float heading_deg);
+	void setKeepHeading(bool enable, float heading_deg) { _heading_hold.setKeepHeading(enable, heading_deg); }
 
 	/**
 	 * Enable/disable the outer yaw-speed PID (keep-heading PID).
 	 * When false, yaw-speed setpoint is forced to 0 and integrators reset,
 	 * even when keep_heading is otherwise enabled. For diagnostics.
 	 */
-	void setYawSpeedPidEnabled(bool enable) { _yawspeed_pid_enabled = enable; }
+	void setYawSpeedPidEnabled(bool enable) { _heading_hold.setYawSpeedPidEnabled(enable); }
+
+	/**
+	 * Enable/disable the fine heading-hold stage (DF_YAW_FINE_EN).
+	 * When false, the fine PID is bypassed and the coarse yaw-speed PID
+	 * (DF_YAWSPEED_P/I/D) is used across the whole heading-error range.
+	 */
+	void setFineYawEnabled(bool enable) { _heading_hold.setFineYawEnabled(enable); }
 
 	/**
 	 * Set maximum yaw rate for keep heading
 	 * @param max_yaw_rate_deg_s Maximum yaw rate in degrees per second
 	 */
-	void setMaxYawRate(float max_yaw_rate_deg_s);
+	void setMaxYawRate(float max_yaw_rate_deg_s) { _heading_hold.setMaxYawRate(max_yaw_rate_deg_s); }
 
 	/**
 	 * Set the yaw speed PID gains
@@ -167,7 +175,7 @@ public:
 	 * @param I heading integral to yaw-rate gain
 	 * @param D yaw-rate damping gain
 	 */
-	void setYawSpeedGains(float P, float I, float D);
+	void setYawSpeedGains(float P, float I, float D) { _heading_hold.setYawSpeedGains(P, I, D); }
 
 	/**
 	 * Set the fine heading hold parameters used near the target heading
@@ -183,13 +191,17 @@ public:
 	 */
 	void setFineYawSpeedGains(float error_deg, float rate_limit_deg_s, float P, float I, float D,
 				  float integral_limit_deg_s, float brake_accel_deg_s2, float tolerance_deg,
-				  float min_rate_deg_s);
+				  float min_rate_deg_s)
+	{
+		_heading_hold.setFineYawSpeedGains(error_deg, rate_limit_deg_s, P, I, D,
+						   integral_limit_deg_s, brake_accel_deg_s2, tolerance_deg, min_rate_deg_s);
+	}
 
 	/**
 	 * Set maximum yaw acceleration for keep heading
 	 * @param max_yaw_accel_deg_s2 Maximum yaw acceleration in degrees per second squared
 	 */
-	void setMaxYawAcceleration(float max_yaw_accel_deg_s2);
+	void setMaxYawAcceleration(float max_yaw_accel_deg_s2) { _heading_hold.setMaxYawAcceleration(max_yaw_accel_deg_s2); }
 
 	/**
 	 * Pass the current vehicle state to the controller
@@ -310,32 +322,8 @@ private:
 	float _yaw_sp{}; /**< desired heading */
 	float _yawspeed_sp{}; /** desired yaw-speed */
 
-	// Keep heading feature
-	bool _keep_heading_enabled{false}; /**< enable keep heading feature */
-	bool _yawspeed_pid_enabled{true}; /**< enable outer yaw-speed PID (DF_YAWSPEED_PID_EN) */
-	float _keep_heading_target{0.0f}; /**< target heading in radians */
-	float _max_yaw_rate{math::radians(20.0f)}; /**< maximum yaw rate in rad/s */
-	float _max_yaw_accel{math::radians(10.0f)}; /**< maximum yaw acceleration in rad/s^2 */
-
-	// Keep-heading yaw-rate shaping gains
-	float _gain_yawspeed_p{0.8f}; /**< heading error to yaw-rate gain */
-	float _gain_yawspeed_i{0.08f}; /**< heading integral to yaw-rate gain */
-	float _gain_yawspeed_d{0.8f}; /**< yaw-rate damping gain */
-
-	float _fine_yaw_error{math::radians(25.0f)}; /**< heading error threshold for fine mode */
-	float _fine_yaw_rate_limit{math::radians(35.0f)}; /**< fine mode heading correction yaw-rate limit */
-	float _fine_yawspeed_p{2.0f}; /**< fine heading error to yaw-rate gain */
-	float _fine_yawspeed_i{0.12f}; /**< fine heading integral to yaw-rate gain */
-	float _fine_yawspeed_d{1.2f}; /**< fine yaw-rate damping gain */
-	float _fine_yawspeed_ilim{math::radians(12.0f)}; /**< fine integral yaw-rate contribution limit */
-	float _fine_yaw_brake_accel{math::radians(20.0f)}; /**< estimated fine-mode yaw braking acceleration */
-	float _fine_yaw_tolerance{math::radians(3.0f)}; /**< acceptable fine heading error */
-	float _fine_yaw_min_rate{math::radians(12.0f)}; /**< minimum fine correction yaw rate outside tolerance */
-
-	// Keep-heading yaw-rate shaping state
-	float _yawspeed_error_prev{0.0f}; /**< kept for API compatibility with older tuning code */
-	float _yawspeed_integral{0.0f}; /**< heading error integral accumulator */
-	float _yawspeed_sp_prev{0.0f}; /**< previous yaw speed setpoint for acceleration limiting */
+	// Keep heading feature (shared coarse + fine yaw-rate PID)
+	HeadingHoldControl _heading_hold;
 	float _yaw_rate{0.0f}; /**< current gyro yaw rate (rad/s) */
 
 	bool _position_relaxed{false}; /**< DF_POS_RELAX: accept acc_sp without valid pos/vel from estimator */
