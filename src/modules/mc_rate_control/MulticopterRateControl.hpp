@@ -166,6 +166,8 @@ private:
 		(ParamBool<px4::params::MC_BAT_SCALE_EN>) _param_mc_bat_scale_en,
 
 		(ParamInt<px4::params::DF_MC_DIR_EN>) _param_df_mc_dir_en,
+		(ParamInt<px4::params::DF_ATT_HOLD_EN>) _param_df_att_hold_en,
+		(ParamFloat<px4::params::DF_MC_DIR_RP>) _param_df_mc_dir_rp,
 
 		(ParamFloat<px4::params::DF_PAYLOAD_KG>) _param_df_payload_kg,
 		(ParamFloat<px4::params::DF_PAYLOAD_MIN>) _param_df_payload_min

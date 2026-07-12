@@ -80,14 +80,18 @@ MulticopterRateControl::parameters_updated()
 	// to the ideal (K * [1 + 1/sTi + sTd]) form
 	Vector3f rate_k = Vector3f(_param_mc_rollrate_k.get(), _param_mc_pitchrate_k.get(), _param_mc_yawrate_k.get());
 
-	// DF_PAYLOAD_KG: scale all three rate-axis gains based on payload to keep rate
-	// loop stable when flying with less than the full 45 kg payload.
+	// DF_PAYLOAD_KG: scale the ROLL and PITCH rate gains based on payload to keep
+	// the rate loop stable when flying with less than the full 45 kg payload.
+	// Yaw is intentionally NOT scaled: payload hangs below the drone and changes
+	// roll/pitch inertia (long pendulum arm) but barely changes yaw inertia, and
+	// yaw is the critical keep-heading axis - scaling it down cripples heading
+	// authority and lets the drone spin.
 	const float payload_kg = math::constrain(_param_df_payload_kg.get(), 0.f, 45.f);
 	const float payload_min = math::constrain(_param_df_payload_min.get(), 0.05f, 1.f);
 	const float rp_scale = payload_min + (1.f - payload_min) * (payload_kg / 45.f);
-	rate_k(0) *= rp_scale;
-	rate_k(1) *= rp_scale;
-	rate_k(2) *= rp_scale;
+	rate_k(0) *= rp_scale;   // roll
+	rate_k(1) *= rp_scale;   // pitch
+	// rate_k(2) (yaw) left at full gain on purpose
 
 	_rate_control.setPidGains(
 		rate_k.emult(Vector3f(_param_mc_rollrate_p.get(), _param_mc_pitchrate_p.get(), _param_mc_yawrate_p.get())),
@@ -219,12 +223,19 @@ MulticopterRateControl::Run()
 			}
 		}
 
+		// manual/stabilized mode without any position/velocity/altitude assistance
+		const bool manual_stabilized = _vehicle_control_mode.flag_control_manual_enabled &&
+					       !_vehicle_control_mode.flag_control_altitude_enabled &&
+					       !_vehicle_control_mode.flag_control_velocity_enabled &&
+					       !_vehicle_control_mode.flag_control_position_enabled;
+
+		// DF_ATT_HOLD_EN: keep-heading in attitude mode. The rate loop runs
+		// normally (yaw tracks the keep-heading yaw-rate setpoint) but the
+		// roll/pitch torque is injected directly from the sticks.
+		const bool att_hold_active = _param_df_att_hold_en.get() && manual_stabilized;
+
 		// run the rate controller (skip only when Direct Flight is active - mc_att_control publishes torque/thrust directly)
-		const bool direct_flight_active = _param_df_mc_dir_en.get() &&
-						  _vehicle_control_mode.flag_control_manual_enabled &&
-						  !_vehicle_control_mode.flag_control_altitude_enabled &&
-						  !_vehicle_control_mode.flag_control_velocity_enabled &&
-						  !_vehicle_control_mode.flag_control_position_enabled;
+		const bool direct_flight_active = _param_df_mc_dir_en.get() && !att_hold_active && manual_stabilized;
 
 		if (_vehicle_control_mode.flag_control_rates_enabled && !direct_flight_active) {
 
@@ -292,6 +303,24 @@ MulticopterRateControl::Run()
 						vehicle_thrust_setpoint.xyz[i] = math::constrain(vehicle_thrust_setpoint.xyz[i] * _battery_status_scale, -1.f, 1.f);
 						vehicle_torque_setpoint.xyz[i] = math::constrain(vehicle_torque_setpoint.xyz[i] * _battery_status_scale, -1.f, 1.f);
 					}
+				}
+			}
+
+			// DF_ATT_HOLD_EN: replace roll/pitch torque with direct stick input
+			// (same mapping as DF_MC_DIR), yaw torque stays from the rate loop
+			if (att_hold_active) {
+				manual_control_setpoint_s manual_control_setpoint;
+
+				if (_manual_control_setpoint_sub.copy(&manual_control_setpoint)
+				    && manual_control_setpoint.timestamp != 0
+				    && hrt_elapsed_time(&manual_control_setpoint.timestamp) < 100_ms) {
+					vehicle_torque_setpoint.xyz[0] = manual_control_setpoint.roll * _param_df_mc_dir_rp.get();
+					vehicle_torque_setpoint.xyz[1] = manual_control_setpoint.pitch * _param_df_mc_dir_rp.get();
+
+				} else {
+					// No valid manual input - zero roll/pitch torque
+					vehicle_torque_setpoint.xyz[0] = 0.f;
+					vehicle_torque_setpoint.xyz[1] = 0.f;
 				}
 			}
 
