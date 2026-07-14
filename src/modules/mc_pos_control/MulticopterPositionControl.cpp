@@ -321,6 +321,7 @@ void MulticopterPositionControl::parameters_update(bool force) {
     _control.setKeepHeading(_param_df_yaw_hold_en.get(),
                             _param_df_yaw_hold.get());
     _control.setYawSpeedPidEnabled(_param_df_yawspeed_pid_en.get() != 0);
+    _control.setFineYawEnabled(_param_df_yaw_fine_en.get() != 0);
     _control.setMaxYawRate(_param_df_yawspeed_maxr.get());
     _control.setMaxYawAcceleration(_param_df_yaw_acc_max.get());
 
@@ -648,9 +649,25 @@ void MulticopterPositionControl::Run() {
         if (_manual_control_setpoint_sub.copy(&manual) && manual.valid &&
             hrt_elapsed_time(&manual.timestamp) < 200_ms) {
           const float acc_scale = _param_mpc_acc_hor.get();
-          // Pitch = forward/back (NED +X forward), Roll = left/right (NED +Y right)
-          _setpoint.acceleration[0] = manual.pitch * acc_scale;
-          _setpoint.acceleration[1] = manual.roll * acc_scale;
+          // Sticks are body frame: pitch = body forward, roll = body right.
+          // Rotate body->NED by current heading; the thrust output is rotated
+          // NED->body by the same heading downstream, so stick = body thrust
+          // at any heading.
+          const float acc_fwd = manual.pitch * acc_scale;
+          const float acc_right = manual.roll * acc_scale;
+
+          if (PX4_ISFINITE(states.yaw)) {
+            const float cos_y = cosf(states.yaw);
+            const float sin_y = sinf(states.yaw);
+            _setpoint.acceleration[0] = acc_fwd * cos_y - acc_right * sin_y;
+            _setpoint.acceleration[1] = acc_fwd * sin_y + acc_right * cos_y;
+
+          } else {
+            // no valid heading: keep legacy NED mapping
+            _setpoint.acceleration[0] = acc_fwd;
+            _setpoint.acceleration[1] = acc_right;
+          }
+
           _setpoint.acceleration[2] = 0.f;
         //   if (dbg) {
         //     PX4_INFO("[DBG_POS] mc_pos: STICK FALLBACK acc[%.2f,%.2f] pitch=%.2f roll=%.2f",
