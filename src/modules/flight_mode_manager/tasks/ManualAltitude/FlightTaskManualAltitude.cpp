@@ -285,6 +285,16 @@ void FlightTaskManualAltitude::_updateYawSetpoint()
 	_stick_yaw.generateYawSetpoint(_yawspeed_setpoint, _yaw_setpoint,
 				       _sticks.getYawExpo(), _yaw, _deltatime,
 				       _unaided_yaw);
+
+	// DF keep-heading owns yaw: use its target as the task yaw setpoint so the
+	// stick input frame (rotateIntoHeadingFrameXY) matches the heading that the
+	// position controller is actually holding. Without this the StickYaw lock
+	// goes stale when keep-heading turns the vehicle and sticks stay in the
+	// old heading frame.
+	if (_param_df_yaw_hold_en.get() != 0) {
+		_yaw_setpoint = wrap_pi(math::radians(_param_df_yaw_hold.get()));
+		_yawspeed_setpoint = NAN;
+	}
 }
 
 void FlightTaskManualAltitude::_updateXYSetpoint()

@@ -93,7 +93,9 @@ protected:
 					(ParamFloat<px4::params::MPC_LAND_SPEED>)
 					_param_mpc_land_speed, /**< desired downwards speed when approaching the ground */
 					(ParamFloat<px4::params::MPC_TKO_SPEED>)
-					_param_mpc_tko_speed /**< desired upwards speed when still close to the ground */
+					_param_mpc_tko_speed, /**< desired upwards speed when still close to the ground */
+					(ParamInt<px4::params::DF_YAW_HOLD_EN>) _param_df_yaw_hold_en,
+					(ParamFloat<px4::params::DF_YAW_HOLD>) _param_df_yaw_hold
 				       )
 private:
 	/**
