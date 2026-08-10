@@ -218,7 +218,10 @@ private:
 		(ParamInt<px4::params::CA_AIRFRAME>) _param_ca_airframe,
 		(ParamInt<px4::params::CA_METHOD>) _param_ca_method,
 		(ParamInt<px4::params::CA_FAILURE_MODE>) _param_ca_failure_mode,
-		(ParamInt<px4::params::CA_R_REV>) _param_r_rev
+		(ParamInt<px4::params::CA_R_REV>) _param_r_rev,
+		(ParamBool<px4::params::DF_MOT_LIFT_EN>) _param_df_mot_lift_en,
+		(ParamFloat<px4::params::DF_MOT_LIFT_MAX>) _param_df_mot_lift_max,
+		(ParamBool<px4::params::DF_YAW_PRIO_EN>) _param_df_yaw_prio_en
 	)
 
 };

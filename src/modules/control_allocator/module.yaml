@@ -48,6 +48,51 @@ parameters:
                 2: Automatic
             default: 2
 
+        DF_YAW_PRIO_EN:
+            description:
+                short: Yaw-priority allocation for symmetric horizontal airframes
+                long: |
+                  Replaces the clip-only pseudo-inverse output with a yaw-priority
+                  re-allocation, for 4-motor airframes with symmetric horizontal
+                  thrust axes (diagonal X, opposing pairs cancel). Yaw torque is
+                  realized exactly (at the same effective gain as the legacy
+                  clipped allocation) and translation is scaled down only as much
+                  as needed to fit the motor range. Pure translation and pure yaw
+                  reproduce the legacy behavior, so no loop retuning is needed.
+                  Takes precedence over DF_MOT_LIFT_EN.
+                  Only enable on airframes matching this geometry.
+            type: boolean
+            default: 0
+
+        DF_MOT_LIFT_EN:
+            description:
+                short: Uniform motor lift instead of clipping negative demands
+                long: |
+                  When the allocated solution would drive a motor below its minimum,
+                  shift ALL motors up uniformly (up to DF_MOT_LIFT_MAX) instead of
+                  clipping that motor. For symmetric horizontal airframes (opposing
+                  rotor pairs whose force and yaw contributions cancel) the uniform
+                  component is wrench-neutral, so this restores the yaw authority
+                  that per-motor clipping destroys during pure translation.
+                  Only enable on airframes where a uniform motor offset produces
+                  no net force or torque.
+            type: boolean
+            default: 0
+
+        DF_MOT_LIFT_MAX:
+            description:
+                short: Maximum uniform motor lift
+                long: |
+                  Upper bound for the uniform motor shift applied by DF_MOT_LIFT_EN,
+                  in normalized motor output. Limits idle power and leaves headroom
+                  at the top of the motor range.
+            type: float
+            decimal: 2
+            increment: 0.05
+            min: 0.0
+            max: 0.5
+            default: 0.3
+
         # Motor parameters
         CA_R_REV:
             description:

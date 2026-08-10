@@ -299,6 +299,22 @@ ControlAllocator::update_effectiveness_source()
 	return false;
 }
 
+// motor-range spread of s*u_trans + z, seeded with 0 so the baseline lift
+// (raising the minimum to zero) is included: spread <= 1 means the solution fits
+static float spreadOf(const float s, const float u_trans[4], const float z[4])
+{
+	float mn = 0.f;
+	float mx = 0.f;
+
+	for (int j = 0; j < 4; j++) {
+		const float v = s * u_trans[j] + z[j];
+		mn = math::min(mn, v);
+		mx = math::max(mx, v);
+	}
+
+	return mx - mn;
+}
+
 void
 ControlAllocator::Run()
 {
@@ -433,6 +449,102 @@ ControlAllocator::Run()
 			_actuator_effectiveness->allocateAuxilaryControls(dt, i, _control_allocation[i]->_actuator_sp); //flaps and spoilers
 			_actuator_effectiveness->updateSetpoint(c[i], i, _control_allocation[i]->_actuator_sp,
 								_control_allocation[i]->getActuatorMin(), _control_allocation[i]->getActuatorMax());
+
+			// DF_YAW_PRIO: yaw-priority re-allocation for the symmetric horizontal
+			// airframe (4 motors, diagonal horizontal thrust axes). Decompose the
+			// pseudo-inverse solution into orthogonal Fx/Fy/yaw differentials plus a
+			// wrench-neutral baseline, then rebuild with priority: yaw is realized
+			// exactly (at the same effective gain as the legacy clipped allocation),
+			// translation is scaled down only as much as needed to fit the motor
+			// range. Pure translation and pure yaw reproduce the legacy behavior
+			// bit-for-bit, so no loop retuning is required.
+			if (_param_df_yaw_prio_en.get() && _control_allocation[i]->numConfiguredActuators() == 4) {
+				auto &u = _control_allocation[i]->_actuator_sp;
+
+				if (PX4_ISFINITE(u(0)) && PX4_ISFINITE(u(1)) && PX4_ISFINITE(u(2)) && PX4_ISFINITE(u(3))) {
+					// orthogonal decomposition (basis: (1,-1,1,-1), (-1,1,1,-1), (-1,-1,1,1))
+					const float cx = (u(0) - u(1) + u(2) - u(3)) * 0.25f;
+					const float cy = (-u(0) + u(1) + u(2) - u(3)) * 0.25f;
+					float cz = (-u(0) - u(1) + u(2) + u(3)) * 0.25f;
+
+					// Realize the full commanded yaw torque (clamped to the physical
+					// maximum). This also keeps the reported unallocated torque at
+					// zero whenever the command is achievable, so the yaw-rate
+					// integrator anti-windup only engages on true saturation.
+					// NOTE: the plant gain seen by the yaw-rate loop is 2x the
+					// legacy clipped allocation - compensate with MC_YAWRATE_K.
+					cz = math::constrain(cz, -0.5f, 0.5f);
+
+					const float t[4] = {cx - cy, -cx + cy, cx + cy, -cx - cy};
+					const float z[4] = {-cz, -cz, cz, cz};
+
+					// legacy translation behavior: negative half of the differential clipped
+					float u_trans[4];
+
+					for (int j = 0; j < 4; j++) {
+						u_trans[j] = math::max(t[j], 0.f);
+					}
+
+					// largest translation scale s in [0,1] so that s*u_trans + z fits
+					// in [0,1] after lifting the minimum to zero (i.e. spread <= 1).
+					// s=0 always fits because |cz| <= 0.5. Monotone -> bisection.
+					float s = 1.f;
+
+					if (spreadOf(1.f, u_trans, z) > 1.f) {
+						float lo = 0.f;
+						float hi = 1.f;
+
+						for (int iter = 0; iter < 16; iter++) {
+							const float mid = 0.5f * (lo + hi);
+
+							if (spreadOf(mid, u_trans, z) <= 1.f) {
+								lo = mid;
+
+							} else {
+								hi = mid;
+							}
+						}
+
+						s = lo;
+					}
+
+					float mn = 0.f;
+
+					for (int j = 0; j < 4; j++) {
+						mn = math::min(mn, s * u_trans[j] + z[j]);
+					}
+
+					const float lift = -mn;
+
+					for (int j = 0; j < 4; j++) {
+						u(j) = s * u_trans[j] + z[j] + lift;
+					}
+				}
+
+			// DF_MOT_LIFT: when the solution would drive a motor below its minimum,
+			// shift all motors up uniformly instead of letting the clip below cut it.
+			// For this symmetric horizontal airframe the uniform component is
+			// wrench-neutral, so translation keeps its yaw authority (per-motor
+			// clipping otherwise deletes the yaw differential when two motors
+			// are pinned at zero during pure sideways/forward thrust).
+			} else if (_param_df_mot_lift_en.get()) {
+				auto &actuator_sp = _control_allocation[i]->_actuator_sp;
+				const auto &actuator_min = _control_allocation[i]->getActuatorMin();
+				const int num_actuators = _control_allocation[i]->numConfiguredActuators();
+				float lift = 0.f;
+
+				for (int j = 0; j < num_actuators; j++) {
+					lift = math::max(lift, actuator_min(j) - actuator_sp(j));
+				}
+
+				lift = math::min(lift, _param_df_mot_lift_max.get());
+
+				if (lift > FLT_EPSILON) {
+					for (int j = 0; j < num_actuators; j++) {
+						actuator_sp(j) += lift;
+					}
+				}
+			}
 
 			if (_has_slew_rate) {
 				_control_allocation[i]->applySlewRateLimit(dt);
