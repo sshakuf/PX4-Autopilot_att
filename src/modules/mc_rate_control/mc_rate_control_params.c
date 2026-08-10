@@ -41,8 +41,10 @@
  * Roll rate P gain
  *
  * Roll rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ * 0 disables the roll rate loop entirely (horizontal airframes without
+ * roll authority).
  *
- * @min 0.01
+ * @min 0.0
  * @max 0.5
  * @decimal 3
  * @increment 0.01
@@ -122,8 +124,10 @@ PARAM_DEFINE_FLOAT(MC_ROLLRATE_K, 1.0f);
  * Pitch rate P gain
  *
  * Pitch rate proportional gain, i.e. control output for angular speed error 1 rad/s.
+ * 0 disables the pitch rate loop entirely (horizontal airframes without
+ * pitch authority).
  *
- * @min 0.01
+ * @min 0.0
  * @max 0.6
  * @decimal 3
  * @increment 0.01
