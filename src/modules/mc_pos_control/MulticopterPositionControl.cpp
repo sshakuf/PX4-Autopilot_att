@@ -619,8 +619,39 @@ void MulticopterPositionControl::Run() {
       // Set velocity limits (horizontal only, vertical speeds are 0)
       _control.setVelocityLimits(max_speed_xy, 0.0f, 0.0f);
 
+      // DF_TGT_HOLD: stay above the IR beacon. When engaged, command NED
+      // velocity setpoints from the tilt-compensated camera offset and let
+      // the existing velocity loop do the rest. Sticks always win: any
+      // deflection pauses tracking (falls through to the normal manual
+      // path below) and centering the sticks re-captures the beacon.
+      bool target_hold_active = false;
+
+      {
+        manual_control_setpoint_s manual{};
+        const bool sticks_centered = _manual_control_setpoint_sub.copy(&manual)
+                                     && manual.valid
+                                     && hrt_elapsed_time(&manual.timestamp) < 500_ms
+                                     && fabsf(manual.pitch) < 0.1f
+                                     && fabsf(manual.roll) < 0.1f;
+
+        matrix::Vector2f target_vel_sp_ne;
+
+        if (_target_hold.update(vehicle_local_position.dist_bottom,
+                                vehicle_local_position.dist_bottom_valid,
+                                sticks_centered, dt, target_vel_sp_ne)) {
+          _setpoint.position[0] = NAN;
+          _setpoint.position[1] = NAN;
+          _setpoint.velocity[0] = target_vel_sp_ne(0);
+          _setpoint.velocity[1] = target_vel_sp_ne(1);
+          _setpoint.acceleration[0] = NAN;
+          _setpoint.acceleration[1] = NAN;
+          target_hold_active = true;
+        }
+      }
+
       // Fix NAN position setpoint before sending to controller
-      if (!PX4_ISFINITE(_setpoint.position[0]) || !PX4_ISFINITE(_setpoint.position[1])) {
+      if (!target_hold_active &&
+          (!PX4_ISFINITE(_setpoint.position[0]) || !PX4_ISFINITE(_setpoint.position[1]))) {
         // No valid position setpoint - set to current position for position hold
         if (PX4_ISFINITE(states.position(0)) && PX4_ISFINITE(states.position(1))) {
           _setpoint.position[0] = states.position(0);
@@ -643,7 +674,7 @@ void MulticopterPositionControl::Run() {
 
       // DF_POS_RELAX fallback: when trajectory has no valid acc_sp, use sticks directly
       // (flight task may fail when estimator invalid; guarantees stick response)
-      if (_param_df_pos_relax.get() == 1 &&
+      if (!target_hold_active && _param_df_pos_relax.get() == 1 &&
           (!PX4_ISFINITE(_setpoint.acceleration[0]) || !PX4_ISFINITE(_setpoint.acceleration[1]))) {
         manual_control_setpoint_s manual{};
         if (_manual_control_setpoint_sub.copy(&manual) && manual.valid &&

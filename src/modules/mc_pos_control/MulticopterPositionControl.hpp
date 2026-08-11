@@ -84,6 +84,8 @@
 #include <uORB/topics/vehicle_torque_setpoint.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 
+#include "TargetHold/TargetHold.hpp"
+
 using namespace time_literals;
 
 class MulticopterPositionControl : public ModuleBase<MulticopterPositionControl>, public ModuleParams,
@@ -108,6 +110,8 @@ private:
 	void Run() override;
 
 	orb_advert_t _mavlink_log_pub{nullptr};
+
+	TargetHold _target_hold{this}; /**< IR-beacon stay-above-target controller (DF_TGT_*) */
 	uORB::Publication<vehicle_attitude_setpoint_s>	     _vehicle_attitude_setpoint_pub{ORB_ID(vehicle_attitude_setpoint)};
 	uORB::Publication<vehicle_local_position_setpoint_s> _local_pos_sp_pub{ORB_ID(vehicle_local_position_setpoint)};	/**< vehicle local position setpoint publication */
 	uORB::Publication<vehicle_thrust_setpoint_s>         _vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};	/**< direct thrust setpoint publication */
@@ -208,6 +212,7 @@ private:
 		// Keep heading parameters
 		(ParamInt<px4::params::DF_YAW_HOLD_EN>) _param_df_yaw_hold_en,
 		(ParamInt<px4::params::DF_YAWSPD_PID_EN>) _param_df_yawspeed_pid_en,
+		(ParamInt<px4::params::DF_YAW_FINE_EN>) _param_df_yaw_fine_en,
 		(ParamFloat<px4::params::DF_YAW_HOLD>) _param_df_yaw_hold,
 		(ParamFloat<px4::params::DF_YAWSPEED_MAXR>) _param_df_yawspeed_maxr,
 		(ParamFloat<px4::params::DF_YAW_ACC_MAX>) _param_df_yaw_acc_max,

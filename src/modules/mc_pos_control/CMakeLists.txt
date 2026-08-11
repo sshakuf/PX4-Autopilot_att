@@ -42,6 +42,8 @@ px4_add_module(
 	SRCS
 		MulticopterPositionControl.cpp
 		MulticopterPositionControl.hpp
+		TargetHold/TargetHold.cpp
+		TargetHold/TargetHold.hpp
 	DEPENDS
 		GotoControl
 		PositionControl
