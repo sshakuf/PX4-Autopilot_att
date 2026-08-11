@@ -1,0 +1,9 @@
+module_name: LSDT IR beacon camera
+serial_config:
+    - command: ir_cam start -d ${SERIAL_DEV} -b p:${BAUD_PARAM}
+      port_config_param:
+        name: DF_IRC_CFG
+        group: Sensors
+        description_extended: |
+            The LSDT IR camera runs at a fixed 921600 baud - set the selected
+            port's SER_xxx_BAUD parameter to 921600.

@@ -122,6 +122,7 @@ set(msg_files
 	InternalCombustionEngineControl.msg
 	InternalCombustionEngineStatus.msg
 	IridiumsbdStatus.msg
+	IrCameraReport.msg
 	IrlockReport.msg
 	LandingGear.msg
 	LandingGearWheel.msg

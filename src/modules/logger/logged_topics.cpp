@@ -86,6 +86,7 @@ void LoggedTopics::add_default_topics()
 	add_optional_topic("internal_combustion_engine_control", 10);
 	add_optional_topic("internal_combustion_engine_status", 10);
 	add_optional_topic("iridiumsbd_status", 1000);
+	add_optional_topic("ir_camera_report", 50);
 	add_optional_topic("irlock_report", 1000);
 	add_optional_topic("landing_gear", 200);
 	add_optional_topic("landing_gear_wheel", 100);

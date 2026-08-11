@@ -1,0 +1,5 @@
+menuconfig DRIVERS_IR_CAM
+	bool "ir_cam"
+	default n
+	---help---
+		Enable support for the LSDT IR spot-detection camera (serial beacon tracker)
