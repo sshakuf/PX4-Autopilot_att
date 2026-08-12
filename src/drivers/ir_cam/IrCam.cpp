@@ -143,7 +143,10 @@ void IrCam::feedByte(uint8_t byte)
 
 void IrCam::handleFrame(const MspV2Parser::Frame &frame)
 {
-	if (frame.function != MSP_FUNC_SPOTS_REPORT || frame.direction != '>') {
+	// Note: no direction-marker check. The vendor wire framing was assumed
+	// (spec caveat) and real hardware sends SpotsReport with a direction
+	// byte other than '>' - CRC + function ID are the real gate.
+	if (frame.function != MSP_FUNC_SPOTS_REPORT) {
 		// Logger*/other messages: not needed for target tracking
 		if (frame.function >= 310 && frame.function <= 316) {
 			_logger_frames++;
