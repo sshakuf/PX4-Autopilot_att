@@ -104,6 +104,14 @@ private:
 	uint32_t _spots_received{0};
 	uint32_t _bytes_received{0};
 
+	// frame-type statistics to localize "no target" problems
+	uint32_t _spot_reports{0};        // SpotsReport (298) frames received
+	uint32_t _spot_reports_empty{0};  // ... with spots_count == 0 (camera sees nothing)
+	uint32_t _spots_not_valid{0};     // ... spot present but is_valid != 1
+	uint32_t _logger_frames{0};       // Logger* diagnostics (310..316)
+	uint32_t _other_frames{0};        // anything else
+	uint16_t _last_other_function{0};
+
 	uORB::Publication<ir_camera_report_s> _report_pub{ORB_ID(ir_camera_report)};
 	uORB::Subscription _parameter_update_sub{ORB_ID(parameter_update)};
 

@@ -145,6 +145,14 @@ void IrCam::handleFrame(const MspV2Parser::Frame &frame)
 {
 	if (frame.function != MSP_FUNC_SPOTS_REPORT || frame.direction != '>') {
 		// Logger*/other messages: not needed for target tracking
+		if (frame.function >= 310 && frame.function <= 316) {
+			_logger_frames++;
+
+		} else {
+			_other_frames++;
+			_last_other_function = frame.function;
+		}
+
 		return;
 	}
 
@@ -152,9 +160,16 @@ void IrCam::handleFrame(const MspV2Parser::Frame &frame)
 		return;
 	}
 
+	_spot_reports++;
+
 	uint8_t count = frame.payload[0];
 
-	if (count == 0 || count > MAX_SPOTS) {
+	if (count == 0) {
+		_spot_reports_empty++;
+		return;
+	}
+
+	if (count > MAX_SPOTS) {
 		return;
 	}
 
@@ -188,6 +203,9 @@ void IrCam::handleFrame(const MspV2Parser::Frame &frame)
 		_last_valid_spot_time = hrt_absolute_time();
 
 		publishReport(_last_valid_spot_time);
+
+	} else {
+		_spots_not_valid++;
 	}
 }
 
@@ -315,6 +333,13 @@ void IrCam::print_info()
 		 (unsigned long)_parser.framesOk(),
 		 (unsigned long)_parser.crcErrors(),
 		 (unsigned long)_spots_received);
+	PX4_INFO("frames by type: spot reports: %lu (empty: %lu, not-valid spots: %lu), logger: %lu, other: %lu (last func %u)",
+		 (unsigned long)_spot_reports,
+		 (unsigned long)_spot_reports_empty,
+		 (unsigned long)_spots_not_valid,
+		 (unsigned long)_logger_frames,
+		 (unsigned long)_other_frames,
+		 _last_other_function);
 
 	const hrt_abstime now = hrt_absolute_time();
 
