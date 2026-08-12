@@ -120,7 +120,10 @@ private:
 
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::DF_IRC_ROT>) _param_df_irc_rot,
-		(ParamFloat<px4::params::DF_IRC_FOVX>) _param_df_irc_fovx,
-		(ParamFloat<px4::params::DF_IRC_FOVY>) _param_df_irc_fovy
+		(ParamFloat<px4::params::DF_IRC_FX>) _param_df_irc_fx,
+		(ParamFloat<px4::params::DF_IRC_FY>) _param_df_irc_fy,
+		(ParamFloat<px4::params::DF_IRC_CX>) _param_df_irc_cx,
+		(ParamFloat<px4::params::DF_IRC_CY>) _param_df_irc_cy,
+		(ParamFloat<px4::params::DF_IRC_K1>) _param_df_irc_k1
 	)
 };

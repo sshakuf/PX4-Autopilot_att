@@ -56,32 +56,64 @@
 PARAM_DEFINE_INT32(DF_IRC_ROT, 0);
 
 /**
- * IR camera horizontal field of view
+ * IR camera focal length, horizontal
  *
- * Angular field of view across the image width (1236 px). Required for
- * converting the pixel offset into a bearing angle; 0 disables the angle
- * output (ir_camera_report.angle_x/angle_y = NAN, pixel offsets still
- * published). Calibrate: place the beacon at a known lateral distance d and
- * known height h below the camera, read dx_px, then
- * FOV = 2*atan( (width/2) * tan(atan(d/h)) / dx_px ).
+ * Calibrated pinhole focal length in pixels (Brown-Conrady intrinsics).
+ * 0 disables the angle output (ir_camera_report.angle_x/angle_y = NAN,
+ * pixel offsets still published).
  *
- * @unit deg
  * @min 0.0
- * @max 180.0
+ * @max 5000.0
  * @decimal 1
  * @group Sensors
  */
-PARAM_DEFINE_FLOAT(DF_IRC_FOVX, 0.0f);
+PARAM_DEFINE_FLOAT(DF_IRC_FX, 1047.0f);
 
 /**
- * IR camera vertical field of view
+ * IR camera focal length, vertical
  *
- * Angular field of view across the image height (960 px). See DF_IRC_FOVX.
+ * See DF_IRC_FX.
  *
- * @unit deg
  * @min 0.0
- * @max 180.0
+ * @max 5000.0
  * @decimal 1
  * @group Sensors
  */
-PARAM_DEFINE_FLOAT(DF_IRC_FOVY, 0.0f);
+PARAM_DEFINE_FLOAT(DF_IRC_FY, 1065.0f);
+
+/**
+ * IR camera principal point, column
+ *
+ * Calibrated optical center x [px].
+ *
+ * @min 0.0
+ * @max 1236.0
+ * @decimal 1
+ * @group Sensors
+ */
+PARAM_DEFINE_FLOAT(DF_IRC_CX, 618.0f);
+
+/**
+ * IR camera principal point, row
+ *
+ * Calibrated optical center y [px].
+ *
+ * @min 0.0
+ * @max 960.0
+ * @decimal 1
+ * @group Sensors
+ */
+PARAM_DEFINE_FLOAT(DF_IRC_CY, 480.0f);
+
+/**
+ * IR camera radial distortion coefficient k1
+ *
+ * Brown-Conrady single-k1 radial distortion. Undistortion applied as
+ * scale = 1 - k1*r2 + 3*k1^2*r2^2 on the normalized image coordinates.
+ *
+ * @min -1.0
+ * @max 1.0
+ * @decimal 4
+ * @group Sensors
+ */
+PARAM_DEFINE_FLOAT(DF_IRC_K1, -0.2845f);

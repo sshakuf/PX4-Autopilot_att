@@ -236,16 +236,25 @@ void IrCam::publishReport(hrt_abstime now)
 	report.angle_x = NAN;
 	report.angle_y = NAN;
 
-	const float fov_x_deg = _param_df_irc_fovx.get();
-	const float fov_y_deg = _param_df_irc_fovy.get();
+	const float f_x = _param_df_irc_fx.get();
+	const float f_y = _param_df_irc_fy.get();
 
-	if (valid && fov_x_deg > 1.f && fov_y_deg > 1.f) {
-		// pinhole model: tan(angle) = dx / f, f = (width/2) / tan(fov/2)
-		const float f_x = ((float)FRAME_WIDTH / 2.f) / tanf(math::radians(fov_x_deg) / 2.f);
-		const float f_y = ((float)FRAME_HEIGHT / 2.f) / tanf(math::radians(fov_y_deg) / 2.f);
+	if (valid && f_x > 1.f && f_y > 1.f) {
+		// Brown-Conrady (single k1) undistortion on normalized image
+		// coordinates, then pinhole angles about the principal ray.
+		// Matches the validated companion-computer implementation.
+		const float raw_x = report.dx_px + (float)FRAME_WIDTH / 2.f;
+		const float raw_y = report.dy_px + (float)FRAME_HEIGHT / 2.f;
 
-		const float angle_right_img = atan2f(report.dx_px, f_x);  // +right in image
-		const float angle_down_img = atan2f(report.dy_px, f_y);   // +down in image (toward image bottom)
+		const float xd = (raw_x - _param_df_irc_cx.get()) / f_x;
+		const float yd = (raw_y - _param_df_irc_cy.get()) / f_y;
+
+		const float k1 = _param_df_irc_k1.get();
+		const float r2 = xd * xd + yd * yd;
+		const float inverse_scale = 1.f - k1 * r2 + 3.f * k1 * k1 * r2 * r2;
+
+		const float angle_right_img = atanf(xd * inverse_scale);  // +right in image
+		const float angle_down_img = atanf(yd * inverse_scale);   // +down in image (toward image bottom)
 
 		// image -> body (camera looking down). DF_IRC_ROT = camera yaw mounting:
 		// 0: image top = body +X (nose)  -> forward = -down_img, right = +right_img
