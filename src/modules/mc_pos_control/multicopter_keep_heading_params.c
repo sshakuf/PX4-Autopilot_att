@@ -282,3 +282,20 @@ PARAM_DEFINE_FLOAT(DF_YAW_FINE_TOL, 3.0f);
  * @group Multicopter Position Control
  */
 PARAM_DEFINE_FLOAT(DF_YAW_FINE_MINR, 12.0f);
+
+/**
+ * Enable fine heading hold
+ *
+ * When enabled (default), the keep-heading controller switches to the fine
+ * heading-hold PID (DF_YAW_FINE_*) once the heading error is inside
+ * DF_YAW_FINE_ERR. When disabled, the fine stage is bypassed entirely and the
+ * normal coarse yaw-speed PID (DF_YAWSPEED_P/I/D) is used across the whole
+ * range, all the way to the target heading.
+ *
+ * @min 0
+ * @max 1
+ * @value 0 Disabled (coarse PID only)
+ * @value 1 Enabled
+ * @group Multicopter Position Control
+ */
+PARAM_DEFINE_INT32(DF_YAW_FINE_EN, 1);

@@ -627,12 +627,15 @@ void MulticopterPositionControl::Run() {
       bool target_hold_active = false;
 
       {
+        // Sticks deflected -> manual wins. No valid manual input at all
+        // (bench test without RC, or RC loss in flight) counts as centered:
+        // the vehicle keeps holding above the beacon.
         manual_control_setpoint_s manual{};
-        const bool sticks_centered = _manual_control_setpoint_sub.copy(&manual)
-                                     && manual.valid
-                                     && hrt_elapsed_time(&manual.timestamp) < 500_ms
-                                     && fabsf(manual.pitch) < 0.1f
-                                     && fabsf(manual.roll) < 0.1f;
+        const bool manual_fresh = _manual_control_setpoint_sub.copy(&manual)
+                                  && manual.valid
+                                  && hrt_elapsed_time(&manual.timestamp) < 500_ms;
+        const bool sticks_centered = !manual_fresh
+                                     || (fabsf(manual.pitch) < 0.1f && fabsf(manual.roll) < 0.1f);
 
         matrix::Vector2f target_vel_sp_ne;
 

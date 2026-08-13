@@ -61,7 +61,12 @@ using namespace time_literals;
 class TargetHold : public ModuleParams
 {
 public:
-	explicit TargetHold(ModuleParams *parent) : ModuleParams(parent) {}
+	explicit TargetHold(ModuleParams *parent) : ModuleParams(parent)
+	{
+		// advertise immediately so the logger's optional-topic scan at arming
+		// always finds the topic (first real publish can be later)
+		_status_pub.advertise();
+	}
 
 	bool enabled() const { return _param_df_tgt_hold_en.get() != 0; }
 
