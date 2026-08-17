@@ -199,7 +199,33 @@ void IrCam::handleFrame(const MspV2Parser::Frame &frame)
 	_spots_received++;
 
 	if (is_valid == 1) {
-		_dx_px = (float)x - (float)FRAME_WIDTH / 2.f;   // +right of center
+		// The camera reports columns mirrored relative to a standard image frame
+		// (x increasing to the LEFT). Undo it here, at the source, so that
+		// _dx_px keeps its documented "+right of centre" meaning and the pixel
+		// row/column reconstruction in publishReport() stays valid for
+		// DF_IRC_CX/CY and the k1 undistortion.
+		//
+		// Evidence (log_1_2026-8-17-11-13-22.ulg): with DF_IRC_ROT=2 the forward
+		// axis converged (|offset_fwd| 0.178 -> 0.126 m) while the lateral axis
+		// diverged (|offset_right| 0.064 -> 0.276 m), even though the commanded
+		// thrust pointed at the beacon in 89-100% of samples. Forward-correct
+		// plus lateral-inverted requires (angle_x, angle_y) = (+down, +right),
+		// which none of the four DF_IRC_ROT rotations can produce - it needs a
+		// reflection. Mirroring the column here supplies it; DF_IRC_ROT stays 2.
+		//
+		// Do NOT "fix" this by negating _dx_px below: that would break the
+		// raw_x = dx_px + FRAME_WIDTH/2 reconstruction in publishReport(), so
+		// DF_IRC_CX and the distortion model would be applied to a bogus
+		// coordinate (harmless only while CX is exactly FRAME_WIDTH/2).
+		//
+		// Strictly, mirroring the column also mirrors the principal point:
+		// DF_IRC_CX should become FRAME_WIDTH-1-CX = 617 rather than 618. That
+		// 1 px (0.055 deg, ~1 mm at 1 m) is far below the beacon noise floor, so
+		// it is left alone - but re-derive it if CX is ever calibrated off-centre.
+		const uint16_t x_clamped = math::min(x, (uint16_t)(FRAME_WIDTH - 1));
+		const uint16_t x_corrected = (uint16_t)(FRAME_WIDTH - 1 - x_clamped);
+
+		_dx_px = (float)x_corrected - (float)FRAME_WIDTH / 2.f; // +right of center
 		_dy_px = (float)y - (float)FRAME_HEIGHT / 2.f;  // +below center (image y-down)
 		_spot_id = spot_id;
 		_spot_score = score;
@@ -288,7 +314,37 @@ void IrCam::publishReport(hrt_abstime now)
 	report.timestamp = hrt_absolute_time();
 	_report_pub.publish(report);
 	_last_publish_time = now;
+
+#if IR_CAM_DEBUG_MAVLINK
+	publishDebugArray(report);
+#endif
 }
+
+#if IR_CAM_DEBUG_MAVLINK
+void IrCam::publishDebugArray(const ir_camera_report_s &report)
+{
+	// TEMPORARY BENCH DIAGNOSTIC -- see IR_CAM_DEBUG_MAVLINK in IrCam.hpp.
+	// Ground side reads DEBUG_FLOAT_ARRAY and unpacks data[] by this layout:
+	//   0 dx_px  1 dy_px  2 angle_x  3 angle_y  4 valid  5 spot_id  6 spot_score
+	// NaN angles are passed through unchanged so the receiver can tell
+	// "intrinsics not configured" apart from "angle is genuinely zero".
+	debug_array_s dbg{};
+	dbg.id = 0;
+	static constexpr char NAME[] = "IRCAM";
+	memcpy(dbg.name, NAME, sizeof(NAME));
+
+	dbg.data[0] = report.dx_px;
+	dbg.data[1] = report.dy_px;
+	dbg.data[2] = report.angle_x;
+	dbg.data[3] = report.angle_y;
+	dbg.data[4] = report.valid ? 1.f : 0.f;
+	dbg.data[5] = (float)report.spot_id;
+	dbg.data[6] = (float)report.spot_score;
+
+	dbg.timestamp = hrt_absolute_time();
+	_debug_array_pub.publish(dbg);
+}
+#endif
 
 void IrCam::Run()
 {

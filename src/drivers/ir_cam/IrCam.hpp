@@ -53,6 +53,28 @@
 #include <uORB/topics/ir_camera_report.h>
 #include <uORB/topics/parameter_update.h>
 
+/**
+ * TEMPORARY BENCH DIAGNOSTIC -- remove when target-hold tuning is finished.
+ *
+ * Mirrors every ir_camera_report into debug_array, which the mavlink module
+ * streams as DEBUG_FLOAT_ARRAY (50 Hz over USB in MAVLINK_MODE_CONFIG). That
+ * makes the report readable by any ground-side MAVLink client -- pymavlink, or
+ * MAVSDK via mavlink_direct -- because ir_camera_report is a custom uORB topic
+ * that no MAVLink client can subscribe to directly.
+ *
+ * Set to 0 (or delete the guarded blocks in IrCam.hpp/IrCam.cpp) to remove.
+ *
+ * One debug_array is used rather than several DEBUG_VECTs on purpose:
+ * MavlinkStreamDebugVect does a single _debug_sub.update() per tick and
+ * debug_vect has queue depth 1, so back-to-back publications silently drop all
+ * but the last. A single array publication has no such race.
+ */
+#define IR_CAM_DEBUG_MAVLINK 1
+
+#if IR_CAM_DEBUG_MAVLINK
+# include <uORB/topics/debug_array.h>
+#endif
+
 #include "MspV2Parser.hpp"
 
 using namespace time_literals;
@@ -114,6 +136,12 @@ private:
 
 	uORB::Publication<ir_camera_report_s> _report_pub{ORB_ID(ir_camera_report)};
 	uORB::Subscription _parameter_update_sub{ORB_ID(parameter_update)};
+
+#if IR_CAM_DEBUG_MAVLINK
+	// TEMPORARY BENCH DIAGNOSTIC -- see IR_CAM_DEBUG_MAVLINK above
+	void publishDebugArray(const ir_camera_report_s &report);
+	uORB::Publication<debug_array_s> _debug_array_pub{ORB_ID(debug_array)};
+#endif
 
 	perf_counter_t _cycle_perf{perf_alloc(PC_ELAPSED, MODULE_NAME": cycle")};
 	perf_counter_t _comms_error_perf{perf_alloc(PC_COUNT, MODULE_NAME": comms errors")};
