@@ -899,8 +899,25 @@ void MulticopterPositionControl::Run() {
       vehicle_rates_setpoint_s rates_sp{};
       rates_sp.roll = 0.0f;  // No roll rate
       rates_sp.pitch = 0.0f; // No pitch rate
-      rates_sp.yaw =
-          _control.getYawRateSetpoint(); // Yaw rate from position controller
+      // Yaw rate from position controller, with a NAN backstop.
+      //
+      // A NAN here silently disables yaw control entirely: the rate loop cannot
+      // act on it, torque collapses to ~0 and the vehicle spins freely. Seen in
+      // log_5_2026-8-18-09-47-18: vehicle_rates_setpoint.yaw was NAN for all 646
+      // armed samples and the airframe made three full turns (mean 86.8 deg/s,
+      // peak 190) in 13 s while torque_z stayed inside +-0.03.
+      //
+      // The NAN originates upstream - the flight task publishes
+      // trajectory_setpoint.yawspeed = NAN, and with no optical flow the heading
+      // path that should overwrite it is not producing a finite value
+      // (heading_good_for_control was true only 15% of the time).
+      //
+      // Falling back to zero is not merely "safe": commanding zero yaw RATE is
+      // exactly the anti-spin behaviour wanted here, because the rate loop then
+      // damps the spin using the gyro directly. Note that zero yaw ACCELERATION
+      // would be the wrong target - a constant-rate spin already has that.
+      const float yaw_rate_sp_raw = _control.getYawRateSetpoint();
+      rates_sp.yaw = PX4_ISFINITE(yaw_rate_sp_raw) ? yaw_rate_sp_raw : 0.f;
 
       // Set thrust in body frame - this is what actually moves the drone
       rates_sp.thrust_body[0] = thrust_body_x; // Forward/backward thrust
