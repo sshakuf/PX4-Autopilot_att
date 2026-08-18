@@ -78,12 +78,14 @@
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
+#include <uORB/topics/swing_damper_status.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 
+#include "SwingDamper/SwingDamper.hpp"
 #include "TargetHold/TargetHold.hpp"
 
 using namespace time_literals;
@@ -112,6 +114,15 @@ private:
 	orb_advert_t _mavlink_log_pub{nullptr};
 
 	TargetHold _target_hold{this}; /**< IR-beacon stay-above-target controller (DF_TGT_*) */
+
+	/**
+	 * DF_SWAY: pendulum swing damper. Deliberately NOT a ModuleParams child and
+	 * not driven from PositionControl: it must keep working when the EKF
+	 * horizontal solution is invalid (no optical flow), which is exactly the
+	 * condition that makes PositionControl::_inputValid() fail.
+	 */
+	SwingDamper _swing_damper{};
+	uORB::Publication<swing_damper_status_s> _swing_damper_status_pub{ORB_ID(swing_damper_status)};
 	uORB::Publication<vehicle_attitude_setpoint_s>	     _vehicle_attitude_setpoint_pub{ORB_ID(vehicle_attitude_setpoint)};
 	uORB::Publication<vehicle_local_position_setpoint_s> _local_pos_sp_pub{ORB_ID(vehicle_local_position_setpoint)};	/**< vehicle local position setpoint publication */
 	uORB::Publication<vehicle_thrust_setpoint_s>         _vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};	/**< direct thrust setpoint publication */
@@ -227,7 +238,14 @@ private:
 		(ParamFloat<px4::params::DF_YAW_FINE_ILIM>) _param_df_yaw_fine_ilim,
 		(ParamFloat<px4::params::DF_YAW_FINE_ACC>) _param_df_yaw_fine_acc,
 		(ParamFloat<px4::params::DF_YAW_FINE_TOL>) _param_df_yaw_fine_tol,
-		(ParamFloat<px4::params::DF_YAW_FINE_MINR>) _param_df_yaw_fine_minr
+		(ParamFloat<px4::params::DF_YAW_FINE_MINR>) _param_df_yaw_fine_minr,
+
+		// Pendulum swing damper (accelerometer only, no flow/GPS/beacon needed)
+		(ParamInt<px4::params::DF_SWAY_EN>) _param_df_sway_en,
+		(ParamFloat<px4::params::DF_SWAY_D>) _param_df_sway_d,
+		(ParamFloat<px4::params::DF_SWAY_MAX>) _param_df_sway_max,
+		(ParamFloat<px4::params::DF_SWAY_HP>) _param_df_sway_hp,
+		(ParamFloat<px4::params::DF_SWAY_LP>) _param_df_sway_lp
 	);
 
 	math::WelfordMean<float> _sample_interval_s{};

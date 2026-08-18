@@ -88,6 +88,11 @@ void LoggedTopics::add_default_topics()
 	add_optional_topic("iridiumsbd_status", 1000);
 	add_optional_topic("ir_camera_report", 50);
 	add_optional_topic("target_hold_status", 50);
+	// add_topic, not add_optional_topic: the optional variant calls orb_exists()
+	// when the logger starts and silently drops the topic if mc_pos_control has
+	// not advertised it yet. That race was lost in log_2_2026-8-17-17-45-38,
+	// which reported swing_damper_status under excluded_optional_topics.
+	add_topic("swing_damper_status", 50);
 	add_optional_topic("irlock_report", 1000);
 	add_optional_topic("landing_gear", 200);
 	add_optional_topic("landing_gear_wheel", 100);

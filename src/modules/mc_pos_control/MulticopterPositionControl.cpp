@@ -839,6 +839,39 @@ void MulticopterPositionControl::Run() {
       Vector3f thrust_sp_ned;
       _control.getThrustSetpoint(thrust_sp_ned);
 
+      // DF_SWAY: add pendulum swing damping. Placed here, after the position
+      // controller and before the NED->body rotation, on purpose:
+      //   * it is downstream of PositionControl, so it still runs when
+      //     _inputValid() fails - which is exactly the flow-less case it exists
+      //     for (that failure is what left the thrust frozen in the no-flow log)
+      //   * it works in NED, matching the frame the swing velocity is estimated
+      //     in, and gets rotated to body by the existing code below
+      // Input is vehicle_local_position.ax/ay: IMU + attitude derived, published
+      // even when xy_valid == 0, so it does not depend on horizontal aiding.
+      {
+        _swing_damper.setEnabled(_param_df_sway_en.get() != 0);
+        _swing_damper.setGains(_param_df_sway_d.get(), _param_df_sway_max.get());
+        _swing_damper.setFilters(_param_df_sway_hp.get(), _param_df_sway_lp.get());
+
+        const Vector2f accel_ne(vehicle_local_position.ax,
+                                vehicle_local_position.ay);
+        const Vector2f sway = _swing_damper.update(accel_ne, dt);
+
+        thrust_sp_ned(0) += sway(0);
+        thrust_sp_ned(1) += sway(1);
+
+        swing_damper_status_s sway_status{};
+        sway_status.active = _swing_damper.enabled() && accel_ne.isAllFinite();
+        sway_status.accel_n = _swing_damper.accel()(0);
+        sway_status.accel_e = _swing_damper.accel()(1);
+        sway_status.vel_n = _swing_damper.velocity()(0);
+        sway_status.vel_e = _swing_damper.velocity()(1);
+        sway_status.thrust_n = sway(0);
+        sway_status.thrust_e = sway(1);
+        sway_status.timestamp = hrt_absolute_time();
+        _swing_damper_status_pub.publish(sway_status);
+      }
+
       // Transform from NED to body frame using current yaw
       // Body frame: X = forward, Y = right, Z = down
       // NED frame: X = North, Y = East, Z = Down

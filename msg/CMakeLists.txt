@@ -213,6 +213,7 @@ set(msg_files
 	SensorTemp.msg
 	SensorUwb.msg
 	SensorAirflow.msg
+	SwingDamperStatus.msg
 	SystemPower.msg
 	TakeoffStatus.msg
 	TargetHoldStatus.msg
