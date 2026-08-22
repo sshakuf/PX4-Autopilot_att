@@ -163,6 +163,7 @@ set(msg_files
 	ParameterSetValueResponse.msg
 	ParameterUpdate.msg
 	Ping.msg
+	PosControlHealth.msg
 	PositionControllerLandingStatus.msg
 	PositionControllerStatus.msg
 	PositionSetpoint.msg

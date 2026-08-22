@@ -93,6 +93,7 @@ void LoggedTopics::add_default_topics()
 	// not advertised it yet. That race was lost in log_2_2026-8-17-17-45-38,
 	// which reported swing_damper_status under excluded_optional_topics.
 	add_topic("swing_damper_status", 50);
+	add_topic("pos_control_health", 50);
 	add_optional_topic("irlock_report", 1000);
 	add_optional_topic("landing_gear", 200);
 	add_optional_topic("landing_gear_wheel", 100);

@@ -104,26 +104,73 @@ void PositionControl::setInputSetpoint(const trajectory_setpoint_s &setpoint) {
 }
 
 bool PositionControl::update(const float dt) {
-  bool valid = _inputValid();
+  const bool valid = _inputValid();
+  _input_valid = valid;
 
   if (valid) {
     _positionControl();
     _velocityControl(dt);
 
-    // Apply keep heading override if enabled
-    if (_heading_hold.enabled()) {
-      _yaw_sp = _heading_hold.targetHeading();
-      _yawspeed_sp = _heading_hold.update(_yaw, _yaw_rate, dt);
+    // Remember where to fade from if validity is lost on a later iteration.
+    _invalid_elapsed = 0.f;
+    _invalid_decay_scale = 1.f;
+    _thr_sp_held = Vector2f(_thr_sp);
 
-    } else {
-      // Reset PID state when not in keep heading mode
-      _heading_hold.resetState();
+  } else {
+    // DF_INVALID_DECAY: the horizontal loop cannot run, so _thr_sp would
+    // otherwise simply keep its last value - and that is not a benign default.
+    // With the optical flow removed, v_xy_valid goes false, which NANs
+    // states.velocity.xy() in MulticopterPositionControl and makes
+    // _inputValid() fail every iteration. The result was a thrust vector frozen
+    // at a constant 0.392 in a fixed compass direction while the airframe
+    // rotated underneath it (log_0_2026-8-17-15-40-32).
+    //
+    // Fade the held value out instead: short dropouts pass through without a
+    // step discontinuity, while a real loss decays to zero in a bounded time.
+    _invalid_elapsed += math::constrain(dt, 0.f, 0.1f);
 
-      _yawspeed_sp = PX4_ISFINITE(_yawspeed_sp) ? _yawspeed_sp : 0.f;
-      _yaw_sp = PX4_ISFINITE(_yaw_sp)
-                    ? _yaw_sp
-                    : _yaw; // TODO: better way to disable yaw control
-    }
+    _invalid_decay_scale = (_invalid_decay_time > FLT_EPSILON)
+                               ? math::constrain(1.f - _invalid_elapsed / _invalid_decay_time, 0.f, 1.f)
+                               : 0.f;
+
+    const Vector2f faded = _thr_sp_held * _invalid_decay_scale;
+    _thr_sp(0) = faded(0);
+    _thr_sp(1) = faded(1);
+    _thr_sp(2) = 0.f;
+
+    // Do not leave a stale acceleration setpoint being reported downstream.
+    _acc_sp(0) = _acc_sp(1) = 0.f;
+  }
+
+  // Yaw is deliberately OUTSIDE the horizontal validity gate. It needs only
+  // attitude and the gyro, both of which stay valid when the horizontal
+  // solution does not, so losing optical flow must not cost yaw control.
+  // Previously this sat inside `if (valid)`, which left _yawspeed_sp holding the
+  // NAN that arrived from trajectory_setpoint.yawspeed - yaw control silently
+  // stopped and the vehicle rotated 1121 deg in 13 s
+  // (log_5_2026-8-18-09-47-18). Keeping yaw alive also matters for the swing
+  // damper: a spin turns a body-frame accel bias into a rotating NED vector
+  // that reads as a phantom swing.
+  const bool yaw_state_valid = PX4_ISFINITE(_yaw) && PX4_ISFINITE(_yaw_rate);
+
+  if (_heading_hold.enabled() && yaw_state_valid) {
+    _yaw_sp = _heading_hold.targetHeading();
+    _yawspeed_sp = _heading_hold.update(_yaw, _yaw_rate, dt);
+
+  } else {
+    // Reset PID state when not in keep heading mode
+    _heading_hold.resetState();
+
+    _yawspeed_sp = PX4_ISFINITE(_yawspeed_sp) ? _yawspeed_sp : 0.f;
+    _yaw_sp = PX4_ISFINITE(_yaw_sp)
+                  ? _yaw_sp
+                  : (PX4_ISFINITE(_yaw) ? _yaw : 0.f);
+  }
+
+  if (!PX4_ISFINITE(_yawspeed_sp)) {
+    // A NAN here disables yaw control entirely downstream; zero rate is both
+    // finite and the wanted anti-spin behaviour.
+    _yawspeed_sp = 0.f;
   }
 
   // There has to be a valid output acceleration and thrust setpoint otherwise

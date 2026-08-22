@@ -223,6 +223,22 @@ public:
 	void setPositionRelaxed(bool relaxed) { _position_relaxed = relaxed; }
 
 	/**
+	 * DF_INVALID_DECAY: how long the horizontal thrust setpoint is faded out
+	 * when the input becomes invalid, instead of being frozen at its last value.
+	 * @param decay_time_s seconds to reach zero; <= 0 zeroes immediately
+	 */
+	void setInvalidDecayTime(float decay_time_s) { _invalid_decay_time = math::max(decay_time_s, 0.f); }
+
+	/** true if the last update() had a usable horizontal input */
+	bool inputValid() const { return _input_valid; }
+
+	/**
+	 * Fade factor currently applied to the held horizontal thrust:
+	 * 1 = just lost validity, 0 = fully faded out. Always 1 while valid.
+	 */
+	float invalidDecayScale() const { return _invalid_decay_scale; }
+
+	/**
 	 * Apply P-position and PID-velocity controller that updates the member
 	 * thrust, yaw- and yawspeed-setpoints.
 	 * @see _thr_sp
@@ -327,4 +343,11 @@ private:
 	float _yaw_rate{0.0f}; /**< current gyro yaw rate (rad/s) */
 
 	bool _position_relaxed{false}; /**< DF_POS_RELAX: accept acc_sp without valid pos/vel from estimator */
+
+	// Graceful degradation when the horizontal input goes invalid (DF_INVALID_DECAY).
+	float _invalid_decay_time{0.5f}; /**< fade-out duration [s] */
+	float _invalid_decay_scale{1.f}; /**< current fade factor, 1 -> 0 */
+	float _invalid_elapsed{0.f};     /**< time spent invalid [s] */
+	bool _input_valid{true};         /**< result of the last _inputValid() */
+	matrix::Vector2f _thr_sp_held{}; /**< horizontal thrust captured when validity was lost */
 };

@@ -78,6 +78,7 @@
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
+#include <uORB/topics/pos_control_health.h>
 #include <uORB/topics/swing_damper_status.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
@@ -123,6 +124,9 @@ private:
 	 */
 	SwingDamper _swing_damper{};
 	uORB::Publication<swing_damper_status_s> _swing_damper_status_pub{ORB_ID(swing_damper_status)};
+
+	/** single view of how the independently-enabled horizontal features compose */
+	uORB::Publication<pos_control_health_s> _pos_control_health_pub{ORB_ID(pos_control_health)};
 	uORB::Publication<vehicle_attitude_setpoint_s>	     _vehicle_attitude_setpoint_pub{ORB_ID(vehicle_attitude_setpoint)};
 	uORB::Publication<vehicle_local_position_setpoint_s> _local_pos_sp_pub{ORB_ID(vehicle_local_position_setpoint)};	/**< vehicle local position setpoint publication */
 	uORB::Publication<vehicle_thrust_setpoint_s>         _vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};	/**< direct thrust setpoint publication */
@@ -245,7 +249,13 @@ private:
 		(ParamFloat<px4::params::DF_SWAY_D>) _param_df_sway_d,
 		(ParamFloat<px4::params::DF_SWAY_MAX>) _param_df_sway_max,
 		(ParamFloat<px4::params::DF_SWAY_HP>) _param_df_sway_hp,
-		(ParamFloat<px4::params::DF_SWAY_LP>) _param_df_sway_lp
+		(ParamFloat<px4::params::DF_SWAY_LP>) _param_df_sway_lp,
+
+		// Graceful degradation when the horizontal input goes invalid
+		(ParamFloat<px4::params::DF_INVALID_DECAY>) _param_df_invalid_decay,
+
+		// Horizontal thrust arbitration: reserve authority for yaw
+		(ParamFloat<px4::params::DF_YAW_RESERVE>) _param_df_yaw_reserve
 	);
 
 	math::WelfordMean<float> _sample_interval_s{};

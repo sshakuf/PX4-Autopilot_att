@@ -193,6 +193,7 @@ void MulticopterPositionControl::parameters_update(bool force) {
                  _param_mpc_z_vel_d_acc.get()));
     _control.setHorizontalThrustMargin(_param_mpc_thr_xy_marg.get());
     _control.setAccelPerThrust(_param_df_acc_per_thr.get());
+    _control.setInvalidDecayTime(_param_df_invalid_decay.get());
     _control.decoupleHorizontalAndVecticalAcceleration(
         _param_mpc_acc_decouple.get());
     _goto_control.setParamMpcAccHor(_param_mpc_acc_hor.get());
@@ -857,8 +858,69 @@ void MulticopterPositionControl::Run() {
                                 vehicle_local_position.ay);
         const Vector2f sway = _swing_damper.update(accel_ne, dt);
 
-        thrust_sp_ned(0) += sway(0);
-        thrust_sp_ned(1) += sway(1);
+        // Position-control contribution before the damper is added, so the two
+        // can be told apart in the log.
+        const Vector2f thrust_ctrl(thrust_sp_ned(0), thrust_sp_ned(1));
+
+        // ---- DF_YAW_RESERVE: arbitrate the horizontal thrust budget --------
+        //
+        // Several features write this vector independently and their sum used to
+        // be unbounded: position control alone can reach MPC_THR_MAX and the
+        // damper adds up to DF_SWAY_MAX on top. Past full authority the
+        // allocator clips per motor, which changes the DIRECTION of the push,
+        // and a motor pinned at zero cannot produce the yaw differential at all.
+        //
+        // log_14_2000-01-01-00-15-32: a sustained 0.12 damper bias held motor 1
+        // at 0.000 for 92% of samples (actuator_saturation[1] mean -1.80),
+        // unallocated_torque[2] reached 0.079, and the vehicle drifted 45 deg
+        // off a heading it had already reached while asking for +22 deg/s.
+        // DF_YAW_PRIO_EN cannot fix that: re-allocation has nothing left to give
+        // once a motor is at its limit.
+        //
+        // So cap the summed demand, keeping DF_YAW_RESERVE in hand for yaw, and
+        // SCALE rather than clip so the direction survives and both
+        // contributions yield proportionally.
+        Vector2f thrust_sum = thrust_ctrl + sway;
+
+        const float thrust_demand = thrust_sum.norm();
+        const float thrust_budget = math::max(
+            _param_mpc_thr_max.get() - _param_df_yaw_reserve.get(), 0.f);
+        float thrust_scale = 1.f;
+
+        if (thrust_demand > thrust_budget && thrust_demand > FLT_EPSILON) {
+          thrust_scale = thrust_budget / thrust_demand;
+          thrust_sum *= thrust_scale;
+        }
+
+        thrust_sp_ned(0) = thrust_sum(0);
+        thrust_sp_ned(1) = thrust_sum(1);
+
+        // One record of how the independently-enabled features are composing.
+        // Without this there is nothing to distinguish "position control is
+        // running" from "position control is coasting on a faded setpoint", and
+        // several flights this week were spent inferring that from thrust
+        // signatures after the fact.
+        pos_control_health_s health{};
+        health.input_valid = _control.inputValid();
+        health.xy_vel_valid = vehicle_local_position.v_xy_valid;
+        health.height_valid = vehicle_local_position.dist_bottom_valid;
+        health.decay_scale = _control.invalidDecayScale();
+        health.thrust_ctrl_n = thrust_ctrl(0);
+        health.thrust_ctrl_e = thrust_ctrl(1);
+        health.thrust_sway_n = sway(0);
+        health.thrust_sway_e = sway(1);
+        health.thrust_total_n = thrust_sp_ned(0);
+        health.thrust_total_e = thrust_sp_ned(1);
+        health.thrust_budget = thrust_budget;
+        health.thrust_demand = thrust_demand;
+        health.thrust_scale = thrust_scale;
+        health.yaw_rate_sp = _control.getYawRateSetpoint();
+        health.yaw_rate_sp_valid = PX4_ISFINITE(health.yaw_rate_sp);
+        health.target_hold_active = target_hold_active;
+        health.sway_active = _swing_damper.enabled() && accel_ne.isAllFinite();
+        health.heading_hold_active = (_param_df_yaw_hold_en.get() != 0);
+        health.timestamp = hrt_absolute_time();
+        _pos_control_health_pub.publish(health);
 
         swing_damper_status_s sway_status{};
         sway_status.active = _swing_damper.enabled() && accel_ne.isAllFinite();
