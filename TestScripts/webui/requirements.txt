@@ -1,0 +1,14 @@
+# webui — dependencies
+#
+# Python standard library + pymavlink. Nothing else, on purpose: this has to
+# install on a Raspberry Pi in the field with a bad tether. No Flask, no
+# FastAPI, no aiohttp, no websockets, no numpy, no pandas.
+#
+#   python3 -m pip install -r requirements.txt
+#
+# Telemetry push is Server-Sent Events (plain HTTP), which iOS Safari supports
+# natively via EventSource — that is why no websocket library is needed.
+
+pymavlink>=2.4.40
+
+# Python 3.9+ required (tested on 3.9 / 3.11 / 3.13, macOS and Raspberry Pi OS).

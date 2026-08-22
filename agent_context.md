@@ -27,6 +27,46 @@ suspect is the optical flow, not the IR camera.
 **Immediate next action:** analyse `TestScripts/testA.csv` (5,479 rows, recorded
 2026-08-14 18:13, never analysed) and/or run Test A below.
 
+## CURRENT STATE — 2026-08-19
+
+**Uncommitted and awaiting flight test** (do not commit until the user confirms):
+
+- `PositionControl.{cpp,hpp}` — **A1**: heading hold moved OUTSIDE the
+  `if (_inputValid())` gate, with a `yaw_state_valid` guard and a `_yawspeed_sp`
+  NaN check at source. **A2**: `DF_INVALID_DECAY` linear fade of the held
+  horizontal thrust when the input goes invalid, replacing the indefinite freeze.
+- `multicopter_invalid_decay_params.c` — new, `DF_INVALID_DECAY` (default 0.5 s).
+- `msg/PosControlHealth.msg` + `msg/CMakeLists.txt` + `logged_topics.cpp` — new
+  `pos_control_health` topic at 50 Hz: `input_valid`, `xy_vel_valid`,
+  `height_valid`, `decay_scale`, `thrust_ctrl_n/e`, `thrust_sway_n/e`,
+  `thrust_total_n/e`, `yaw_rate_sp(+valid)`, and the three feature-active flags.
+- `MulticopterPositionControl.{cpp,hpp}` — param wiring + health publication.
+
+Builds clean at 88.64% flash. Decay timing verified in simulation (zero at
+t = loss + `DF_INVALID_DECAY`; 0 = immediate; a 0.1 s dropout fades to 0.80 and
+recovers without a step).
+
+**Deliberately NOT done: A3.** `PositionControl.cpp:131` still has a dead
+`return true;` before the real validity return, so `update()` always reports
+success, the module never sees a failure, and the failsafe path at
+`MulticopterPositionControl.cpp:799-820` never runs. A1+A2 fix the *consequences*
+without activating code that has never executed on this airframe. Read
+`generateFailsafeSetpoint()` before enabling it.
+
+**First test to run:** flow off, `DF_SWAY_EN 1`, arm, watch `pos_control_health`.
+Expect `input_valid` false throughout, `decay_scale` → 0 within
+`DF_INVALID_DECAY`, `thrust_ctrl_*` → 0 while `thrust_sway_*` keeps working, and
+`yaw_rate_sp_valid` staying true.
+
+**Known parameter regression:** the committed `drone_params_default.params` has
+`DSHOT_MIN = 0`, but the flight that stopped the spin used `0.10`. Yaw authority
+is a differential about the motor baseline and thrust goes as omega^2, so zero
+idle leaves almost none. Restore before flying.
+
+**In progress:** browser-based controller/telemetry UI under `TestScripts/`
+(MAVProxy + USB, mobile web UI, status panels, log download). See
+`TestScripts/WEBUI_CONTRACT.md`.
+
 ## Status board
 
 | # | Item | Confidence | State |
@@ -357,8 +397,16 @@ that log useless as P-tuning data.
 
 ## Analysis environment
 
-- Logs: `~/Documents/QGroundControl Daily/Logs/` — latest analysed
-  `log_2_2026-8-13-16-21-40.ulg` (16 s, target-hold active 13.4–28.5 s).
+- Logs live in exactly two places (also recorded in `CLAUDE.md`):
+  - `~/Documents/QGroundControl Daily/Logs/` — QGC downloads
+  - `TestScripts/webui/downloads/` — pulled over MAVLink by the webui. Filenames
+    read `2000-01-01` because the vehicle is GPS-denied and `time_utc` is ~0;
+    use the file mtime.
+  - newest across both:
+    `ls -t ~/Documents/QGroundControl\ Daily/Logs/*.ulg TestScripts/webui/downloads/*.ulg | head -1`
+- Always check `u.changed_parameters`, not just `initial_parameters` — features
+  are toggled mid-flight from the webui, and a run can contain several
+  configurations (e.g. `log_13` toggled `DF_SWAY_EN` and `DF_YAW_HOLD_EN` live).
 - `pyulog` installed; `ulog_info` at `~/.local/bin/ulog_info`.
 - Read topics with `pyulog.ULog(path)`; params via `u.initial_parameters`.
 - Relevant topics: `ir_camera_report`, `target_hold_status`,

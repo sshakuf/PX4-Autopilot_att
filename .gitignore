@@ -110,3 +110,5 @@ src/systemcmds/topic_listener/listener_generated.cpp
 log/
 keys/
 movementTest/logs/
+.gstack/
+TestScripts/webui/downloads/

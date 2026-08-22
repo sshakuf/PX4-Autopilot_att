@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>drone GCS</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- 1. link + arm bar (sticky) ------------------------------------------- -->
+<header id="topbar">
+  <div class="linkrow">
+    <span id="linkDot" class="dot"></span>
+    <span id="linkText" class="linktext">connecting</span>
+    <span id="modePill" class="pill">mode --</span>
+    <span id="ratePill" class="pill">-- pkt/s</span>
+    <span id="agePill" class="pill">rx --</span>
+  </div>
+
+  <div class="armrow">
+    <button id="armBtn" class="armbtn inert" type="button">---</button>
+    <div class="armside">
+      <div id="armState" class="armstate">--</div>
+      <div id="ackText" class="mono tiny muted">no command yet</div>
+      <label class="chk"><input type="checkbox" id="forceDisarm"> force disarm (21196)</label>
+    </div>
+  </div>
+
+  <div id="banner" class="banner hidden"></div>
+  <div id="note" class="note hidden"></div>
+</header>
+
+<main>
+
+<!-- 2. body-frame view --------------------------------------------------- -->
+<section class="card">
+  <div class="cardhead">
+    <h2>body frame</h2>
+    <div class="ctl">
+      <button id="rangeDown" class="chip" type="button">&minus;</button>
+      <button id="rangeAuto" class="chip on" type="button">auto</button>
+      <button id="rangeUp" class="chip" type="button">+</button>
+      <button id="dotsBtn" class="chip" type="button">dots &times;1</button>
+      <button id="trailBtn" class="chip" type="button">clear trail</button>
+    </div>
+  </div>
+  <div class="canvaswrap">
+    <canvas id="view"></canvas>
+  </div>
+  <div id="viewLegend" class="legend mono tiny">
+    <span class="lg lg-beacon">beacon</span>
+    <span class="lg lg-fov">camera footprint</span>
+    <span class="lg lg-vel">velocity</span>
+    <span class="lg lg-flow">apparent ground motion</span>
+  </div>
+</section>
+
+<!-- 3. state grid -------------------------------------------------------- -->
+<section class="card">
+  <div class="cardhead"><h2>state</h2></div>
+
+  <div class="grp" id="grpAtt">
+    <div class="grplabel">attitude <span class="mono tiny muted" id="a_att"></span></div>
+    <div class="kvs">
+      <div class="kv"><span class="k">roll</span><span class="v" id="v_roll">--</span><span class="u">&deg;</span></div>
+      <div class="kv"><span class="k">pitch</span><span class="v" id="v_pitch">--</span><span class="u">&deg;</span></div>
+      <div class="kv"><span class="k">yaw</span><span class="v" id="v_yaw">--</span><span class="u">&deg;</span></div>
+    </div>
+  </div>
+
+  <div class="grp" id="grpBodyVel">
+    <div class="grplabel">body velocity <span class="mono tiny muted" id="a_bvel"></span></div>
+    <div class="kvs">
+      <div class="kv"><span class="k">fwd</span><span class="v" id="v_vfwd">--</span><span class="u">m/s</span></div>
+      <div class="kv"><span class="k">right</span><span class="v" id="v_vright">--</span><span class="u">m/s</span></div>
+      <div class="kv"><span class="k">|v|</span><span class="v" id="v_vmag">--</span><span class="u">m/s</span></div>
+    </div>
+  </div>
+
+  <div class="grp" id="grpPos">
+    <div class="grplabel">position NED <span class="mono tiny muted" id="a_pos"></span></div>
+    <div class="kvs">
+      <div class="kv"><span class="k">x</span><span class="v" id="v_x">--</span><span class="u">m</span></div>
+      <div class="kv"><span class="k">y</span><span class="v" id="v_y">--</span><span class="u">m</span></div>
+      <div class="kv"><span class="k">z</span><span class="v" id="v_z">--</span><span class="u">m</span></div>
+      <div class="kv"><span class="k">vx</span><span class="v" id="v_vx">--</span><span class="u">m/s</span></div>
+      <div class="kv"><span class="k">vy</span><span class="v" id="v_vy">--</span><span class="u">m/s</span></div>
+      <div class="kv"><span class="k">vz</span><span class="v" id="v_vz">--</span><span class="u">m/s</span></div>
+    </div>
+  </div>
+
+  <div class="grp" id="grpHeight">
+    <div class="grplabel">height <span class="mono tiny muted" id="a_hgt"></span></div>
+    <div class="kvs">
+      <div class="kv"><span class="k">agl</span><span class="v" id="v_agl">--</span><span class="u">m</span></div>
+      <div class="kv"><span class="k">valid</span><span class="v" id="v_hvalid">--</span><span class="u"></span></div>
+      <div class="kv"><span class="k">flow LSB</span><span class="v" id="v_lsb">--</span><span class="u">m/s</span></div>
+    </div>
+  </div>
+
+  <div class="grp" id="grpIr">
+    <div class="grplabel">IR beacon <span class="mono tiny muted" id="a_ir"></span></div>
+    <div class="kvs">
+      <div class="kv"><span class="k">valid</span><span class="v" id="v_irvalid">--</span><span class="u"></span></div>
+      <div class="kv"><span class="k">dx px</span><span class="v" id="v_dx">--</span><span class="u"></span></div>
+      <div class="kv"><span class="k">dy px</span><span class="v" id="v_dy">--</span><span class="u"></span></div>
+      <div class="kv"><span class="k">angle x</span><span class="v" id="v_ax">--</span><span class="u">rad</span></div>
+      <div class="kv"><span class="k">angle y</span><span class="v" id="v_ay">--</span><span class="u">rad</span></div>
+      <div class="kv"><span class="k">off fwd</span><span class="v" id="v_offf">--</span><span class="u">m</span></div>
+      <div class="kv"><span class="k">off right</span><span class="v" id="v_offr">--</span><span class="u">m</span></div>
+      <div class="kv"><span class="k">spot</span><span class="v" id="v_spot">--</span><span class="u"></span></div>
+      <div class="kv"><span class="k">via</span><span class="v" id="v_via">--</span><span class="u"></span></div>
+    </div>
+  </div>
+
+  <div class="grp" id="grpBatt">
+    <div class="grplabel">battery <span class="mono tiny muted" id="a_batt"></span></div>
+    <div class="kvs">
+      <div class="kv"><span class="k">voltage</span><span class="v" id="v_volt">--</span><span class="u">V</span></div>
+      <div class="kv"><span class="k">current</span><span class="v" id="v_curr">--</span><span class="u">A</span></div>
+      <div class="kv"><span class="k">remaining</span><span class="v" id="v_rem">--</span><span class="u">%</span></div>
+    </div>
+  </div>
+
+  <div class="grp" id="grpLink">
+    <div class="grplabel">link</div>
+    <div class="kvs">
+      <div class="kv"><span class="k">address</span><span class="v mono tiny" id="v_addr">--</span><span class="u"></span></div>
+      <div class="kv"><span class="k">packets</span><span class="v" id="v_pkts">--</span><span class="u"></span></div>
+      <div class="kv"><span class="k">drops</span><span class="v" id="v_drops">--</span><span class="u"></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. params ------------------------------------------------------------ -->
+<details class="card" id="paramCard">
+  <summary class="cardhead"><h2>params</h2><span class="mono tiny muted" id="paramCount"></span></summary>
+  <div class="body">
+    <div class="quick">
+      <button class="qbtn" type="button" data-toggle="DF_SWAY_EN">DF_SWAY_EN <span class="qv">?</span></button>
+      <button class="qbtn" type="button" data-toggle="DF_TGT_HOLD_EN">DF_TGT_HOLD_EN <span class="qv">?</span></button>
+      <button class="qbtn" type="button" data-toggle="DF_YAW_HOLD_EN">DF_YAW_HOLD_EN <span class="qv">?</span></button>
+    </div>
+    <div class="rotrow">
+      <span class="rotlabel">DF_IRC_ROT<br><span class="tiny muted">image top points to</span></span>
+      <div class="seg" id="rotSeg">
+        <button class="segbtn" type="button" data-rot="0">0 nose</button>
+        <button class="segbtn" type="button" data-rot="1">1 right</button>
+        <button class="segbtn" type="button" data-rot="2">2 tail</button>
+        <button class="segbtn" type="button" data-rot="3">3 left</button>
+      </div>
+    </div>
+    <div class="filterrow">
+      <input id="paramFilter" type="text" inputmode="text" autocapitalize="characters"
+             autocomplete="off" spellcheck="false" placeholder="filter, e.g. DF_" value="DF_">
+      <button id="paramLoad" class="btn" type="button">load</button>
+    </div>
+    <div id="paramList" class="plist"></div>
+  </div>
+</details>
+
+<!-- 5. logs -------------------------------------------------------------- -->
+<details class="card" id="logCard">
+  <summary class="cardhead"><h2>logs</h2><span class="mono tiny muted" id="logCount"></span></summary>
+  <div class="body">
+    <div class="filterrow">
+      <button id="logRefresh" class="btn" type="button">refresh list</button>
+      <button id="logCancel" class="btn danger" type="button">cancel download</button>
+      <button id="logErase" class="btn danger" type="button">erase all on drone</button>
+    </div>
+    <div id="logProgress" class="progwrap hidden">
+      <div class="progtext mono tiny"><span id="progLabel">--</span></div>
+      <div class="progbar"><div id="progFill" class="progfill"></div></div>
+    </div>
+    <div id="logList" class="llist"></div>
+    <div class="grplabel">downloaded files</div>
+    <div id="dlList" class="llist"></div>
+  </div>
+</details>
+
+<!-- 6. messages ---------------------------------------------------------- -->
+<details class="card" id="msgCard" open>
+  <summary class="cardhead"><h2>messages</h2><span class="mono tiny muted" id="msgCount"></span></summary>
+  <div class="body">
+    <div id="msgList" class="msgs mono tiny"></div>
+  </div>
+</details>
+
+<footer class="foot tiny muted">
+  no authentication &mdash; field tool on a trusted network.
+  arming spins props: one tap arms, one tap disarms. no confirmation.
+</footer>
+
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
